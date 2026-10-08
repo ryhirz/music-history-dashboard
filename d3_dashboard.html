@@ -1,0 +1,4280 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>一个世纪的原声度变迁 · 曲风数据看板</title>
+<!-- 提前与两个 D3 源建立连接，省掉首次 TLS 握手时间 -->
+<link rel="preconnect" href="https://d3js.org" crossorigin>
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<style>
+/* ══════════════════════════════════════════════════════════════════════
+   设计令牌（深色数据新闻风 / The Pudding 参考）
+   —— 全部颜色收敛到 CSS 变量，后续图表复用同一套，保证视觉一致
+   ══════════════════════════════════════════════════════════════════════ */
+:root{
+  --bg:        #121212;   /* 页面底色 */
+  --panel:     #181818;   /* 卡片底 */
+  --panel-2:   #1f1f1f;   /* 内嵌块底 */
+  --line:      #2a2a2a;   /* 分隔线 */
+  --grid:      #262626;   /* 图表网格 */
+
+  --text:      #e9e9ea;   /* 主文本 */
+  --text-2:    #9aa0a6;   /* 次要文本 */
+  --text-3:    #6a7076;   /* 弱文本 / 标注 */
+
+  --accent:    #5AC8FA;   /* 主数据色（原声度主线 / 误差带 / vocal 轨） */
+  --accent-dim:#2d6f8f;   /* 主色的低饱和版本，用于次要元素 */
+  --warn:      #FF9F0A;   /* 警示色 · 1940s 异常高亮 */
+  --muted:     #8E8E93;   /* 次要 / 残缺数据 */
+  /* Phase 2 新增：器乐轨专用色（紫）。刻意不复用 --warn，
+     因为橙色在本页已有「1940s 异常」的既定语义，同色不同义会造成误读。 */
+  --inst:      #BF5AF2;
+  /* Phase 2 副图：三段占比的明度阶梯（中段刻意接近底色 = 视觉空洞） */
+  --sg-lo:     #7A7A85;   /* 低尾 ac < 0.15（越靠 0 越电声） */
+  --sg-mid:    #242429;   /* 中段 0.15–0.85 —— 被掏空的那一段 */
+  --sg-hi:     #C5C5CC;   /* 高尾 ac > 0.85（越靠 1 越原声） */
+
+  /* Phase 3 新增：微观个案专用色（品红）。同样刻意不复用前两阶段的色 ——
+     --accent 是「整体轨迹」、--inst 是「器乐轨」、--micro 是「单曲个案」，
+     三者语义不同，混用会让读者把「某首歌」误读成「某一类曲目」。 */
+  --micro:     #FF375F;
+  --sm-line:   #D1D1D6;   /* 小多图的折线：中性灰，让 10 张图的形状自己说话 */
+
+  --radius:    14px;
+  --radius-sm: 8px;
+
+  /* Phase 5 新增：全局导航与「数据大厦」层叠质感 */
+  --toc-w:     176px;   /* 侧栏目录宽度（≥1280px 才启用） */
+  --toc-top:   44px;    /* 吸顶偏移 */
+  --rule:      #303035; /* 章节过渡分割线的可辨色（比 --line 亮一档） */
+}
+
+*{ box-sizing:border-box; }
+
+html{ -webkit-text-size-adjust:100%; scroll-behavior:smooth; }
+/* 锚点跳转时给吸顶组件留出呼吸位，不让标题贴着视口顶边 */
+section[id]{ scroll-margin-top:74px; }
+
+body{
+  margin:0;
+  background:var(--bg);
+  color:var(--text);
+  font-family: system-ui, -apple-system, "Segoe UI", "PingFang SC",
+               "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  font-size:15px;
+  line-height:1.7;
+  -webkit-font-smoothing:antialiased;
+  /* 顶部一层极淡的径向光晕，避免纯平背景显得呆板 */
+  background-image: radial-gradient(900px 420px at 12% -8%, rgba(90,200,250,.10), transparent 62%);
+  background-repeat:no-repeat;
+}
+
+.wrap{ max-width:1080px; margin:0 auto; padding:0 24px 96px; }
+
+/* ── 页头 ─────────────────────────────────────────────────────────── */
+.page-head{ padding:76px 0 44px; }
+
+.eyebrow{
+  font-size:12.5px; letter-spacing:.14em; text-transform:uppercase;
+  color:var(--accent); font-weight:600; margin-bottom:18px;
+}
+
+.page-head h1{
+  margin:0 0 18px;
+  font-size:clamp(30px, 4.6vw, 46px);
+  line-height:1.18;
+  letter-spacing:-.02em;
+  font-weight:700;
+}
+
+.lede{
+  margin:0 0 26px;
+  max-width:60ch;
+  font-size:16.5px;
+  color:var(--text-2);
+  line-height:1.78;
+}
+.lede strong{ color:var(--text); font-weight:600; }
+
+.meta-row{ display:flex; flex-wrap:wrap; gap:10px; }
+.chip{
+  display:inline-flex; align-items:center; gap:7px;
+  padding:6px 13px;
+  border:1px solid var(--line);
+  border-radius:999px;
+  background:var(--panel);
+  font-size:12.5px; color:var(--text-2);
+}
+.chip b{ color:var(--text); font-weight:600; }
+.dot{ width:6px; height:6px; border-radius:50%; background:var(--accent); flex:none; }
+.dot.warn{ background:var(--warn); }
+.dot.muted{ background:var(--muted); }
+
+/* ── 通用卡片 ─────────────────────────────────────────────────────── */
+.panel{
+  background:var(--panel);
+  border:1px solid var(--line);
+  border-radius:var(--radius);
+  padding:30px 30px 26px;
+  margin-bottom:26px;
+}
+
+.sec-head{ margin-bottom:6px; }
+.sec-index{
+  font-size:12px; letter-spacing:.12em; text-transform:uppercase;
+  color:var(--text-3); font-weight:600;
+}
+.sec-head h2{
+  margin:9px 0 10px;
+  font-size:22px; font-weight:650; letter-spacing:-.01em;
+}
+.sec-head p{
+  margin:0; max-width:66ch;
+  color:var(--text-2); font-size:14.5px; line-height:1.75;
+}
+
+/* ── 图表容器 ─────────────────────────────────────────────────────── */
+.chart-wrap{ position:relative; margin-top:20px; }
+.chart{ width:100%; }
+
+.chart svg{ display:block; width:100%; overflow:visible; }
+.chart .grid line{ stroke:var(--grid); stroke-dasharray:2 5; }
+.chart .axis path,
+.chart .axis line{ stroke:var(--line); }
+.chart .axis text{ fill:var(--text-2); font-size:12px; }
+.chart .axis .domain{ display:none; }
+.chart .y-label,
+.chart .x-label{ fill:var(--text-3); font-size:11.5px; letter-spacing:.06em; }
+
+/* ── 1940s 异常注释（HTML 覆盖层，由 JS 定位到对应数据点上方） ────── */
+/* 用实底（而非半透明）压住底下的色带与网格线，保证文字始终清晰可读。
+   水平居中交给 CSS，JS 只负责 left/top，避免 transform 被两处争抢。 */
+.anno{
+  position:absolute;
+  width:200px;
+  padding:10px 13px;
+  background:rgba(38,28,12,.95);
+  border:1px solid rgba(255,159,10,.55);
+  border-radius:var(--radius-sm);
+  box-shadow:0 6px 20px rgba(0,0,0,.45);
+  font-size:12px; line-height:1.5;
+  pointer-events:none;
+  transform:translateX(-50%);
+  opacity:1;                 /* 失败安全：动画若不执行，元素依然完整可见 */
+}
+/* 揭示动画用 animation + fill-mode 而非 transition：
+   transition 依赖合成器持续推进，一旦被节流就会停在中间透明度；
+   animation 有确定的终态，配合 both 保证结束后必定停在 opacity:1。 */
+.anno.reveal{ animation:annoIn .45s ease 1.35s both; }
+@keyframes annoIn{ from{ opacity:0; } to{ opacity:1; } }
+
+.anno .anno-t{ color:var(--warn); font-weight:700; letter-spacing:.04em; }
+.anno .anno-b{ color:#f0f0f1; margin-top:3px; }
+.anno .anno-s{ color:#c0a678; margin-top:3px; font-size:11px; }
+
+/* ── 图例 ─────────────────────────────────────────────────────────── */
+.legend{
+  display:flex; flex-wrap:wrap; gap:8px 22px;
+  margin-top:18px; padding-top:16px;
+  border-top:1px solid var(--line);
+  font-size:12.5px; color:var(--text-2);
+}
+.legend span{ display:inline-flex; align-items:center; gap:8px; }
+.swatch{ width:16px; height:3px; border-radius:2px; flex:none; }
+.swatch.band{ height:11px; border-radius:3px; opacity:.42; }
+.swatch.dot{ width:9px; height:9px; border-radius:50%; }
+.swatch.dash{ background:none; border-top:2px dashed var(--muted); height:0; }
+
+/* ── 读数卡 ───────────────────────────────────────────────────────── */
+.readouts{
+  display:grid; grid-template-columns:repeat(auto-fit, minmax(196px,1fr));
+  gap:12px; margin-top:20px;
+}
+.readout{
+  background:var(--panel-2);
+  border:1px solid var(--line);
+  border-radius:var(--radius-sm);
+  padding:14px 16px;
+}
+.readout .k{ font-size:11.5px; color:var(--text-3); letter-spacing:.05em; }
+.readout .v{ font-size:21px; font-weight:650; margin-top:5px; letter-spacing:-.01em; }
+.readout .v small{ font-size:13px; font-weight:500; color:var(--text-2); margin-left:3px; }
+.readout .d{ font-size:12px; color:var(--text-2); margin-top:4px; }
+.v.acc{ color:var(--accent); }
+.v.warn{ color:var(--warn); }
+.v.mut{ color:var(--muted); }
+.v.inst{ color:var(--inst); }
+
+/* ── Phase 2 · 副图（100% 堆叠条） ───────────────────────────────── */
+.chart.mini{ margin-top:6px; }
+
+.mini-cap{
+  margin:26px 0 2px;
+  font-size:12px; color:var(--text-3);
+  letter-spacing:.04em;
+}
+.mini-cap b{ color:var(--text-2); font-weight:600; }
+
+/* 副图图例的三段色块（比主图例更矮更宽，因为表达的是"段"而非"线"） */
+.swatch.seg{ width:26px; height:12px; border-radius:3px; }
+
+/* ── 紫色注释框（1970s 分岔点），与 1940s 的橙色框区分 ───────────── */
+.anno.purple{
+  background:rgba(26,18,38,.95);
+  border-color:rgba(191,90,242,.55);
+  box-shadow:0 6px 20px rgba(0,0,0,.45);
+}
+.anno.purple .anno-t{ color:var(--inst); }
+.anno.purple .anno-s{ color:#a98cc4; }
+/* 第二张图的注释揭示稍晚一些，故用独立类承载不同的 animation-delay */
+.anno.reveal-2{ animation:annoIn .45s ease 1.5s both; }
+
+/* ── 脚注 ─────────────────────────────────────────────────────────── */
+.notes{
+  margin-top:22px; padding-top:18px;
+  border-top:1px solid var(--line);
+  font-size:12.5px; color:var(--text-3); line-height:1.8;
+}
+.notes b{ color:var(--text-2); font-weight:600; }
+.notes code{
+  background:var(--panel-2); border:1px solid var(--line);
+  border-radius:4px; padding:1px 5px; font-size:11.5px;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  color:var(--text-2);
+}
+.notes ol{ margin:9px 0 0; padding-left:19px; }
+.notes li{ margin-bottom:6px; }
+
+/* ── Phase 3 · ICC 金句块 ─────────────────────────────────────────
+   用左侧色条 + 略大的字号把它从正文里拎出来，但不用整块底色，
+   避免和 readout 卡片抢视觉权重。                                  */
+.quote{
+  margin:22px 0 4px;
+  padding:14px 0 14px 18px;
+  border-left:3px solid var(--micro);
+  background:linear-gradient(90deg, rgba(255,55,95,.055), transparent 62%);
+  border-radius:0 6px 6px 0;
+}
+.quote p{
+  margin:0;
+  font-size:17.5px;
+  line-height:1.55;
+  color:var(--text);
+  letter-spacing:-.005em;
+}
+.quote p b{ color:var(--micro); font-weight:700; }
+.quote .q-s{
+  margin-top:8px;
+  font-size:12.5px; color:var(--text-3); line-height:1.75;
+}
+.quote .q-s code{
+  background:var(--panel-2); border:1px solid var(--line);
+  border-radius:4px; padding:1px 5px; font-size:11.5px;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  color:var(--text-2);
+}
+.quote .q-s b{ color:var(--text-2); }
+
+.v.micro{ color:var(--micro); }
+
+/* 小多图的容器不加额外内边距：SVG 自己算边距，让格子能贴满整宽 */
+#chart-micro{ margin-top:10px; }
+#chart-micro-deep{ margin-top:6px; }
+
+/* 深潜副图里的两条高亮点标签，窄屏时收窄字号 */
+.deep-lab{ font-size:11px; }
+
+/* ── 后续阶段占位 ─────────────────────────────────────────────────── */
+.placeholder{
+  border:1px dashed #2e2e2e;
+  background:transparent;
+  padding:22px 30px;
+}
+.placeholder .ph-t{
+  display:flex; align-items:center; gap:10px;
+  font-size:13px; color:var(--text-3); font-weight:600;
+}
+.placeholder .ph-t .badge{
+  font-size:10.5px; padding:2px 8px; border-radius:999px;
+  background:var(--panel-2); border:1px solid var(--line);
+  color:var(--text-3); letter-spacing:.06em;
+}
+.placeholder p{ margin:8px 0 0; font-size:12.5px; color:#565b61; }
+.placeholder code{
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size:11.5px; color:#6a7076;
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   Phase 5 · A. 全局导航与阅读节奏
+   ──────────────────────────────────────────────────────────────────────
+   三件套：阅读进度条（顶部）/ 极简目录（宽屏左吸顶）/ 角落折叠目录（窄屏）
+   刻意都用 position:fixed 而非 sticky —— 本页各图表容器带 overflow 上下文，
+   fixed 不受其影响，定位行为可预测。
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* ── 阅读进度条 ───────────────────────────────────────────────────── */
+#progress{
+  position:fixed; top:0; left:0;
+  height:2px; width:100%;
+  transform:scaleX(0); transform-origin:0 50%;
+  background:linear-gradient(90deg, var(--accent), var(--inst) 58%, var(--micro));
+  z-index:90; pointer-events:none;
+  /* 不用 transition：进度由 rAF 每帧直写，避免过渡与写入互相追尾 */
+}
+
+/* ── 侧栏目录 —— 极简到只剩「编号 + 标题」 ────────────────────────── */
+#toc{
+  position:fixed;
+  top:var(--toc-top); left:calc(50% - 540px - var(--toc-w) - 26px);
+  width:var(--toc-w);
+  z-index:70;
+  /* 默认整体淡出，滚动过页头后由 .on 唤醒 */
+  opacity:0; transform:translateY(-6px);
+  transition:opacity .28s ease, transform .28s ease;
+  pointer-events:none;
+}
+#toc.on{ opacity:1; transform:none; pointer-events:auto; }
+
+#toc .toc-t{
+  font-size:10.5px; letter-spacing:.16em; text-transform:uppercase;
+  color:var(--text-3); font-weight:600; margin-bottom:11px;
+}
+#toc ol{ list-style:none; margin:0; padding:0; }
+#toc li{ margin:0; }
+#toc a{
+  display:flex; align-items:baseline; gap:9px;
+  padding:5px 9px 5px 8px;
+  border-left:2px solid transparent;
+  border-radius:0 5px 5px 0;
+  text-decoration:none;
+  color:var(--text-3);
+  transition:color .18s ease, background .18s ease, border-color .18s ease;
+}
+#toc a .n{
+  font-size:9.5px; letter-spacing:.08em; font-weight:700;
+  font-variant-numeric:tabular-nums; opacity:.75;
+  width:18px; flex:none;
+}
+#toc a .t{
+  font-size:12.5px; line-height:1.4; letter-spacing:.005em;
+}
+/* hover 与当前章节：都用左侧色条 + 提亮，不改变布局尺寸 */
+#toc a:hover{ color:var(--text-2); background:rgba(255,255,255,.035); }
+#toc a.cur{
+  color:var(--text); background:rgba(90,200,250,.09);
+  border-left-color:var(--accent);
+}
+#toc a.cur .n{ color:var(--accent); opacity:1; }
+#toc a.done{ color:var(--text-3); }
+#toc a.done .n{ opacity:1; }
+
+/* ── 窄屏角落目录（details 折叠在右下角）────────────────────────── */
+#toc-mini{
+  position:fixed; right:14px; bottom:14px; z-index:75;
+  background:rgba(24,24,24,.97);
+  border:1px solid var(--line);
+  border-radius:var(--radius-sm);
+  box-shadow:0 8px 26px rgba(0,0,0,.55);
+  max-width:min(74vw, 268px);
+  backdrop-filter:blur(6px);
+}
+#toc-mini>summary{
+  list-style:none; cursor:pointer;
+  padding:9px 13px;
+  font-size:12px; color:var(--text-2); font-weight:600;
+  display:flex; align-items:center; gap:8px;
+}
+#toc-mini>summary::-webkit-details-marker{ display:none; }
+#toc-mini>summary .dot{ background:var(--accent); }
+#toc-mini[open]>summary{ border-bottom:1px solid var(--line); }
+#toc-mini .m-list{ padding:6px 6px 8px; }
+#toc-mini a{
+  display:flex; align-items:baseline; gap:8px;
+  padding:6px 8px; border-radius:5px;
+  text-decoration:none; color:var(--text-3); font-size:12px;
+}
+#toc-mini a:hover{ background:rgba(255,255,255,.04); }
+#toc-mini a.cur{ color:var(--text); background:rgba(90,200,250,.1); }
+#toc-mini a .n{ font-size:9.5px; font-weight:700; opacity:.75; width:18px; flex:none; }
+
+/* 目录可见性按断点切换：≥1280 侧栏；920–1279 两者都不显示（留白更干净）；
+   <920 角落折叠目录。两组规则互不重叠，避免同屏出现两个导航。 */
+#toc{ display:none; }
+#toc-mini{ display:none; }
+@media (min-width:1280px){ #toc{ display:block; } }
+@media (max-width:919px){
+  #toc-mini{ display:block; }
+  /* 触屏/窄屏下打断点平滑滚动会更「跳」，改回即时跳转 */
+  html{ scroll-behavior:auto; }
+}
+
+/* ── 章节过渡：分割线 + 留白，把四块叙事隔成可呼吸的段落 ────────── */
+.panel + .panel{ position:relative; margin-top:52px; }
+.panel + .panel::before{
+  content:'';
+  position:absolute; top:-27px; left:50%; transform:translateX(-50%);
+  width:min(320px, 62%); height:1px;
+  background:linear-gradient(90deg, transparent, var(--rule) 22%, var(--rule) 78%, transparent);
+}
+
+/* ── 章节罗马编号：把「图 N」升级成可被目录引用的章节号 ─────────── */
+.sec-index .num{
+  display:inline-block;
+  color:var(--accent); font-weight:700;
+  margin-right:9px; letter-spacing:.1em;
+  font-size:12.5px;
+}
+
+/* ── 跨区块穿针引线（Task B）─────────────────────────────────────── */
+.thread{
+  display:flex; align-items:flex-start; gap:12px;
+  margin:24px 0 2px;
+  padding:13px 16px 13px 14px;
+  border:1px dashed rgba(90,200,250,.34);
+  border-radius:var(--radius-sm);
+  background:linear-gradient(90deg, rgba(90,200,250,.055), transparent 74%);
+  font-size:12.5px; line-height:1.75; color:var(--text-2);
+}
+.thread .th-ic{
+  flex:none; width:20px; height:20px; border-radius:50%;
+  display:flex; align-items:center; justify-content:center;
+  font-size:11px; font-weight:700;
+  background:rgba(90,200,250,.16); color:var(--accent);
+  margin-top:1px;
+}
+.thread b{ color:var(--text); font-weight:600; }
+.thread .th-x{
+  color:var(--accent); text-decoration:none;
+  border-bottom:1px dotted rgba(90,200,250,.6);
+  white-space:nowrap;
+}
+.thread .th-x:hover{ border-bottom-style:solid; }
+/* 同一个「时代漂移 → 中观分岔」的链接在 Phase 4 里用了不同色系呼应紫色分岔点 */
+.thread.thread-meso{
+  border-color:rgba(191,90,242,.34);
+  background:linear-gradient(90deg, rgba(191,90,242,.06), transparent 74%);
+}
+.thread.thread-meso .th-ic{ background:rgba(191,90,242,.18); color:var(--inst); }
+.thread.thread-meso .th-x{ color:var(--inst); border-bottom-color:rgba(191,90,242,.6); }
+/* 指向 Phase 1 宏观衰退的那条，用主数据色系 */
+.thread.thread-macro{
+  border-color:rgba(255,55,95,.32);
+  background:linear-gradient(90deg, rgba(255,55,95,.055), transparent 74%);
+}
+.thread.thread-macro .th-ic{ background:rgba(255,55,95,.16); color:var(--micro); }
+.thread.thread-macro .th-x{ color:var(--micro); border-bottom-color:rgba(255,55,95,.55); }
+
+/* ── 数据底座与法医学声明（Task C）───────────────────────────────── */
+#sec-forensic{ margin-top:52px; }
+/* 四条防线刻意排成 2×2：
+   ① 用 auto-fit 时 972px 内宽最多塞 3 列 → 第 4 张必然孤零零折到第二行，
+      视觉上像"多出来的补充说明"，与四者并列的地位不符；
+   ② 2×2 让四条防线两两成对，且每张卡宽约 480px，
+      正文一行能放下 40+ 字，比 3 列时的窄长条好读得多。
+   窄屏（≤700px）退回单列。 */
+.forensic-grid{
+  display:grid; grid-template-columns:repeat(2, 1fr);
+  gap:12px; margin-top:20px;
+}
+@media (max-width:700px){
+  .forensic-grid{ grid-template-columns:1fr; }
+}
+.fcard{
+  background:var(--panel-2);
+  border:1px solid var(--line);
+  border-radius:var(--radius-sm);
+  padding:15px 16px 14px;
+  border-top:2px solid var(--fc, var(--accent));
+}
+.fcard .fk{
+  font-size:11px; letter-spacing:.09em; text-transform:uppercase;
+  color:var(--text-3); font-weight:700;
+}
+.fcard .fv{
+  font-size:27px; font-weight:700; letter-spacing:-.02em;
+  color:var(--fc, var(--accent)); margin:7px 0 2px;
+  font-variant-numeric:tabular-nums;
+}
+.fcard .fv small{ font-size:13px; font-weight:500; color:var(--text-2); margin-left:4px; }
+.fcard .fd{ font-size:12px; color:var(--text-2); line-height:1.7; margin-top:5px; }
+.fcard .fd code{
+  background:rgba(255,255,255,.05); border:1px solid var(--line);
+  border-radius:4px; padding:1px 5px; font-size:11px;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+
+/* 声明区里的「四层验证」表 —— 用等宽数字对齐，读起来像一张体检单 */
+.fverify{ margin-top:20px; }
+.fverify table{
+  width:100%; border-collapse:collapse;
+  font-size:12px; font-variant-numeric:tabular-nums;
+}
+.fverify th{
+  text-align:left; font-weight:600; color:var(--text-3);
+  padding:8px 10px; border-bottom:1px solid var(--rule);
+  font-size:11px; letter-spacing:.07em; text-transform:uppercase;
+}
+.fverify td{
+  padding:8px 10px; border-bottom:1px solid var(--line);
+  color:var(--text-2); vertical-align:top;
+}
+.fverify td.v{ color:var(--text); font-weight:600; }
+.fverify td.pass{ color:#30D158; font-weight:700; }
+.fverify tr:last-child td{ border-bottom:none; }
+.fverify code{
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size:11px; color:var(--text-2);
+}
+
+/* ── Tooltip ──────────────────────────────────────────────────────── */
+.tooltip{
+  position:fixed;
+  z-index:60;
+  min-width:186px;
+  padding:12px 14px;
+  background:rgba(28,28,28,.97);
+  border:1px solid #3a3a3a;
+  border-radius:var(--radius-sm);
+  box-shadow:0 10px 34px rgba(0,0,0,.6);
+  font-size:12.5px; line-height:1.6;
+  pointer-events:none;
+  opacity:0;
+  transform:translateY(4px);
+  transition:opacity .14s ease, transform .14s ease;
+}
+.tooltip.on{ opacity:1; transform:translateY(0); }
+.tt-h{
+  font-size:15px; font-weight:700; letter-spacing:-.01em;
+  padding-bottom:8px; margin-bottom:8px;
+  border-bottom:1px solid #343434;
+  display:flex; align-items:baseline; justify-content:space-between; gap:12px;
+}
+.tt-h .tt-n{ font-size:11.5px; font-weight:500; color:var(--text-3); }
+.tt-r{ display:flex; align-items:baseline; justify-content:space-between; gap:16px; }
+.tt-r .k{ color:var(--text-3); }
+.tt-r .v{ color:var(--text); font-weight:600; font-variant-numeric:tabular-nums; }
+.tt-r.hi .v{ color:var(--accent); }
+.tt-r.warn .k, .tt-r.warn .v{ color:var(--warn); }
+
+/* Phase 2：双轨 Tooltip 的两轨色标、分隔线、Gap 行 */
+.tt-track{ display:flex; align-items:center; gap:7px; margin:7px 0 3px; }
+.tt-track .sw{ width:9px; height:9px; border-radius:2px; flex:none; }
+.tt-track .nm{ font-size:12px; font-weight:600; color:var(--text); }
+.tt-track .nn{ font-size:11px; color:var(--text-3); margin-left:auto; }
+.tt-sep{ height:1px; background:#343434; margin:9px 0; }
+.tt-r.gap .v{ color:#FFD60A; font-weight:700; }
+.tt-mini{
+  display:flex; justify-content:space-between; gap:14px;
+  font-size:11.5px; color:var(--text-3);
+  font-variant-numeric:tabular-nums;
+}
+.tt-note{
+  margin-top:8px; padding-top:8px; border-top:1px solid #343434;
+  font-size:11.5px; color:var(--text-3);
+}
+
+/* ── 图表引擎加载中的占位 ────────────────────────────────────────── */
+.loading{
+  display:flex; align-items:center; justify-content:center; gap:10px;
+  height:260px;
+  color:var(--text-3); font-size:13px;
+}
+.loading i{
+  width:7px; height:7px; border-radius:50%; background:var(--accent);
+  animation:pulse 1.05s ease-in-out infinite;
+}
+@keyframes pulse{
+  0%,100%{ opacity:.25; transform:scale(.8); }
+  50%    { opacity:1;   transform:scale(1); }
+}
+
+/* ── 加载 / 出错兜底 ──────────────────────────────────────────────── */
+.fallback{
+  padding:26px; text-align:center;
+  border:1px solid #3a2b2b; border-radius:var(--radius-sm);
+  background:rgba(255,90,90,.06);
+  color:#e39b9b; font-size:13.5px;
+}
+
+footer{
+  margin-top:34px; padding-top:22px;
+  border-top:1px solid var(--line);
+  font-size:12px; color:var(--text-3);
+  display:flex; flex-wrap:wrap; gap:6px 18px; justify-content:space-between;
+}
+
+@media (max-width:640px){
+  .wrap{ padding:0 16px 64px; }
+  .page-head{ padding:52px 0 34px; }
+  .panel{ padding:22px 18px 20px; }
+  .placeholder{ padding:18px; }
+  .anno{ width:172px; font-size:11.5px; }
+  .readout .v{ font-size:19px; }
+  /* 窄屏下 11 个年代标签旋转后更易挤在一起，略缩字号 */
+  .chart .axis text{ font-size:11px; }
+  /* Phase 5：窄屏下过渡留白与卡片内边距按比例收窄，避免「一屏一卡」 */
+  .panel + .panel{ margin-top:38px; }
+  .panel + .panel::before{ top:-20px; }
+  #sec-forensic{ margin-top:38px; }
+  .fcard .fv{ font-size:23px; }
+  .fverify th, .fverify td{ padding:7px 7px; }
+}
+</style>
+</head>
+<body>
+
+<!-- Phase 5 · 阅读进度条（顶部 2px）：由底部脚本用 rAF 直写 scaleX -->
+<div id="progress" aria-hidden="true"></div>
+
+<!-- Phase 5 · 极简目录（宽屏左吸顶）—— 四个叙事区块的锚点 -->
+<nav id="toc" aria-label="章节导航">
+  <div class="toc-t">章节</div>
+  <ol>
+    <li><a href="#sec-macro" data-toc="sec-macro"><span class="n">I</span><span class="t">百年衰退</span></a></li>
+    <li><a href="#sec-meso"  data-toc="sec-meso" ><span class="n">II</span><span class="t">命运分岔</span></a></li>
+    <li><a href="#sec-micro" data-toc="sec-micro"><span class="n">III</span><span class="t">天然实验</span></a></li>
+    <li><a href="#sec-space" data-toc="sec-space"><span class="n">IV</span><span class="t">时代漂移</span></a></li>
+    <li><a href="#sec-forensic" data-toc="sec-forensic"><span class="n">V</span><span class="t">数据底座</span></a></li>
+  </ol>
+</nav>
+
+<!-- Phase 5 · 窄屏角落折叠目录（<920px 生效，与侧栏互斥显示） -->
+<details id="toc-mini">
+  <summary><span class="dot"></span>章节导航</summary>
+  <div class="m-list">
+    <a href="#sec-macro" data-toc="sec-macro"><span class="n">I</span><span class="t">百年衰退</span></a>
+    <a href="#sec-meso"  data-toc="sec-meso" ><span class="n">II</span><span class="t">命运分岔</span></a>
+    <a href="#sec-micro" data-toc="sec-micro"><span class="n">III</span><span class="t">天然实验</span></a>
+    <a href="#sec-space" data-toc="sec-space"><span class="n">IV</span><span class="t">时代漂移</span></a>
+    <a href="#sec-forensic" data-toc="sec-forensic"><span class="n">V</span><span class="t">数据底座</span></a>
+  </div>
+</details>
+
+<div class="wrap">
+
+  <!-- ═══════════════ 页头 ═══════════════ -->
+  <header class="page-head">
+    <div class="eyebrow">Spotify 曲风数据分析 · D3 数据看板</div>
+    <h1>一个世纪的原声度变迁</h1>
+    <p class="lede">
+      100 年间，流行音乐的<strong>原声度（acousticness）</strong>从 0.80 一路跌到 0.22 ——
+      但这条下滑曲线并非匀速。它在中段出现过一次陡坡，在中段之前近乎平坦，
+      而离散度的形状则是先收窄、后张开的一条 <strong>U 形</strong>。
+      本看板把一个世纪的统计证据摊开，让形态自己说话。
+    </p>
+    <div class="meta-row">
+      <span class="chip"><span class="dot"></span>样本 <b>170,653</b> 首</span>
+      <span class="chip"><span class="dot"></span>跨度 <b>1921 – 2020</b></span>
+      <span class="chip"><span class="dot"></span>口径 <b>配额抽样</b> · 每十年 19k–20k</span>
+      <span class="chip"><span class="dot warn"></span>异常 <b>1940s</b></span>
+      <span class="chip"><span class="dot muted"></span>残缺 <b>2020s</b></span>
+    </div>
+  </header>
+
+  <main>
+
+    <!-- ═══════════════ 图表 1 · 宏观趋势 ═══════════════ -->
+    <section id="sec-macro" class="panel" aria-labelledby="macro-title">
+      <div class="sec-head">
+        <div class="sec-index"><span class="num">I</span>图 1 / 宏观趋势</div>
+        <h2 id="macro-title">原声度轨迹与离散度带</h2>
+        <p>
+          实线为每个十年的原声度均值，半透明色带为 <code>mean ± 1σ</code>（样本标准差，ddof=1）。
+          色带的宽度本身就是一条信息：它在 1950s 收得最窄，随后向两端张开 ——
+          说明那段时期的音乐「长相」最统一，而电子化之后反而分化得更厉害。
+        </p>
+      </div>
+
+      <!-- D3 把 <svg> 注入 #chart-macro；1940s 注释是 HTML 覆盖层，由 JS 定位 -->
+      <div class="chart-wrap" id="wrap-macro">
+        <div class="chart" id="chart-macro">
+          <div class="loading" id="macro-loading"><i></i>正在加载图表引擎…</div>
+        </div>
+        <div class="anno" id="anno-1940">
+          <div class="anno-t">1940s · 分布右偏</div>
+          <div class="anno-b">均值落在 IQR 之外</div>
+          <div class="anno-s">Mean outside IQR · Right-skewed</div>
+        </div>
+      </div>
+
+      <div class="legend">
+        <span><i class="swatch" style="background:var(--accent)"></i>均值 mean</span>
+        <span><i class="swatch band" style="background:var(--accent)"></i>mean ± 1σ 离散带</span>
+        <span><i class="swatch dot" style="background:var(--accent)"></i>完整十年</span>
+        <span><i class="swatch dot" style="background:var(--warn)"></i>1940s 异常点</span>
+        <span><i class="swatch dash" style="border-top-color:rgba(255,159,10,.55)"></i>1960s 陡降起点</span>
+        <span><i class="swatch dash"></i>2020s 残缺十年（n = 2,030）</span>
+      </div>
+
+      <div class="readouts">
+        <div class="readout">
+          <div class="k">世纪降幅</div>
+          <div class="v acc">−72.6<small>%</small></div>
+          <div class="d">0.8016 → 0.2199</div>
+        </div>
+        <div class="readout">
+          <div class="k">离散度谷底</div>
+          <div class="v">0.1867</div>
+          <div class="d">1950s · σ 最小，版本最同质</div>
+        </div>
+        <div class="readout">
+          <div class="k">离散度峰值</div>
+          <div class="v">0.3204</div>
+          <div class="d">1920s · σ 最大，风格最杂</div>
+        </div>
+        <div class="readout">
+          <div class="k">唯一异常点</div>
+          <div class="v warn">1940s</div>
+          <div class="d">均值 0.8710 落在 IQR [0.880, 0.991] 之外</div>
+        </div>
+      </div>
+
+      <div class="notes">
+        <b>读图须知</b>
+        <ol>
+          <li>
+            <b>色带裁剪</b>：<code>mean ± 1σ</code> 在 5 个十年会越出 <code>[0, 1]</code> 值域
+            （1920s–1950s 上界超 1，1980s–2020s 下界低于 0）。这是边界挤压的必然结果，
+            <b>不是数据错误</b> —— 绘图时已裁剪到 <code>[0, 1]</code>，故贴边处的色带看起来被「削平」。
+          </li>
+          <li>
+            <b>1940s 异常</b>：该十年 <code>mean = 0.8710</code> 低于自身 <code>p25 = 0.880</code>，
+            是 11 个十年中唯一均值落在四分位带之外的年份。原因是分布<b>极度右偏</b>
+            （<code>median = 0.968</code>，远高于均值）—— 少数低原声度曲目把均值拉了下来。
+            此点已高亮标注，未做任何平滑或隐藏。
+          </li>
+          <li>
+            <b>2020s 残缺</b>：该桶仅含 2,030 首（截至 2020 年），样本量不足其他十年的 1/9。
+            其折线段以虚线绘制、圆点以空心显示，<b>不可与完整十年做等量比较</b>。
+          </li>
+          <li>
+            <b>禁止跨年代比较绝对数量</b>：本数据集采用配额抽样，每十年锁定 19k–20k 首。
+            因此只能比较<b>比例、均值、离散度</b>等强度指标，绝对曲目数没有意义。
+          </li>
+          <li>
+            <b>数据来源</b>：锁定视图 <code>acoustic_trajectory</code>（11 行 / 7 列），
+            数值与台账逐值一致，未经二次加工。
+          </li>
+        </ol>
+      </div>
+    </section>
+
+    <!-- ═══════════════ 后续阶段占位（Phase 2+） ═══════════════ -->
+    <!-- ═══════════════ 图表 2 · 中观分岔 ═══════════════ -->
+    <section id="sec-meso" class="panel" aria-labelledby="meso-title">
+      <div class="sec-head">
+        <div class="sec-index"><span class="num">II</span>图 2 / 中观分岔</div>
+        <h2 id="meso-title">两条路：器乐与人声的双轨分岔</h2>
+        <p>
+          把整体的原声度拆成<b>器乐曲</b>与<b>人声曲</b>两条轨，故事立刻变了形。
+          两条线在 <b>1950s–1970s 是平行下坠</b> —— 两个十年的累计降幅几乎相同
+          （器乐 0.433、人声 0.426，差不到 1 个百分点）。
+          但在 <b>1970s 之后分道扬镳</b>：器乐停止下降，人声继续滑落。
+          更关键的是 —— 色带的宽度（IQR）在 1970s <b>交叉</b>：
+          器乐从「最同质」变成「最分裂」，人声恰好相反。
+        </p>
+      </div>
+
+      <!-- 主图：双线 + IQR 带 -->
+      <div class="chart-wrap" id="wrap-meso">
+        <div class="chart" id="chart-meso">
+          <div class="loading" id="meso-loading"><i></i>正在加载图表引擎…</div>
+        </div>
+        <div class="anno purple" id="anno-1970">
+          <div class="anno-t">1970s · 分岔起点</div>
+          <div class="anno-b">离散度在此交叉</div>
+          <div class="anno-s">Dispersion crossover</div>
+        </div>
+      </div>
+
+      <!-- 副图：三段占比 100% 堆叠条 -->
+      <div class="mini-cap">
+        分布形态 · <b>低尾 / 中段 / 高尾</b> 各占多少 —— 中段越窄，说明分布越像「两个极端」
+      </div>
+      <div class="chart mini" id="chart-meso-shape"></div>
+
+      <div class="legend">
+        <span><i class="swatch" style="background:var(--inst)"></i>器乐 instrumental</span>
+        <span><i class="swatch" style="background:var(--accent)"></i>人声 vocal</span>
+        <span><i class="swatch band" style="background:var(--inst)"></i>IQR 区间（p25–p75）</span>
+        <span><i class="swatch dash" style="border-top-color:rgba(191,90,242,.7)"></i>1970s 分岔线</span>
+        <span><i class="swatch dot" style="border:2px solid var(--muted); background:transparent"></i>n &lt; 50，不可用</span>
+      </div>
+
+      <div class="legend" style="border-top:none; padding-top:2px; margin-top:10px;">
+        <span><i class="swatch seg" style="background:var(--sg-lo)"></i>低尾 ac &lt; 0.15</span>
+        <span><i class="swatch seg" style="background:var(--sg-mid); border:1px solid #33333a"></i>中段 0.15–0.85（被掏空）</span>
+        <span><i class="swatch seg" style="background:var(--sg-hi)"></i>高尾 ac &gt; 0.85</span>
+      </div>
+
+      <div class="readouts">
+        <div class="readout">
+          <div class="k">1970s · Gap 最小</div>
+          <div class="v acc">0.0817</div>
+          <div class="d">两轨最接近的年代 · 之后反向张开</div>
+        </div>
+        <div class="readout">
+          <div class="k">2000s · Gap 最大</div>
+          <div class="v acc">0.3089</div>
+          <div class="d">器乐 0.5523 vs 人声 0.2434</div>
+        </div>
+        <div class="readout">
+          <div class="k">离散度交叉</div>
+          <div class="v inst">1970s</div>
+          <div class="d">器乐 IQR 0.759 首次超过人声 0.539</div>
+        </div>
+        <div class="readout">
+          <div class="k">1970s 之后</div>
+          <div class="v">−0.015<small>/人声 −0.146</small></div>
+          <div class="d">器乐几乎冻结，人声继续滑落（1970s→2010s，避开残缺的 2020s）</div>
+        </div>
+      </div>
+
+      <div class="notes">
+        <b>读图须知</b>
+        <ol>
+          <li>
+            <b>均值会撒谎</b>：1970s 之后器乐均值在 <code>0.46–0.48</code> 之间横摆
+            （2000s 的 <code>0.55</code> 属小样本年际抖动），看上去像「进入稳定平台期」。
+            但副图显示，它的中段已被掏空到只剩 <code>23–30%</code>（1970s 尚有 <code>44.7%</code>）——
+            这个均值<b>落在双峰之间的空谷</b>，既不代表低尾（0.01 的电子乐），
+            也不代表高尾（0.93 的古典/影视配乐）。<b>只看均值会完全错过这个故事。</b>
+          </li>
+          <li>
+            <b>两个极端的响度差 12.5 dB</b>：低尾（<code>ac &lt; 0.15</code>，1970s 之后器乐
+            <code>n = 3,776</code>）的代表是 Metallica / Nine Inch Nails / Daft Punk，
+            平均响度 <code>−9.41 dB</code>、能量 <code>0.74</code>；
+            高尾（<code>ac &gt; 0.85</code>，<code>n = 3,408</code>）是 John Williams / Bach / 久石让，
+            平均响度 <code>−21.89 dB</code>、能量 <code>0.15</code>。
+            这不是「程度差异」，是<b>两个制作世界</b>。
+            <span style="color:var(--text-3)">（口径与视图完全一致：<code>instrumentalness ≥ 0.5</code>
+            + 1970s 之后，可直接用 <code>raw_tracks</code> 复算。）</span>
+          </li>
+          <li>
+            <b>圆点大小 = 样本量</b>（对数刻度）。<b>2020s 器乐仅 28 首</b>，
+            其 95% 置信区间 <code>[0.316, 0.653]</code>（t 分布，<code>df = 27</code>）
+            <b>完全覆盖</b> 2010s 的点值 <code>0.4582</code> —— 因此它看似「回升」，
+            统计上却<b>无法与「没变」区分</b>。该点已用虚线 + 空心 + 最小半径三层降级，
+            不可参与任何趋势解读。
+          </li>
+          <li>
+            <b>禁止跨年代比较绝对数量</b>：本数据集采用配额抽样，只能比较比例、均值、离散度等强度指标。
+          </li>
+          <li>
+            <b>数据来源</b>：锁定视图 <code>track_type_dispersion</code>（22 行 / 13 列）
+            与 <code>instrumental_vs_vocal</code>（22 行 / 8 列）。
+            除 <code>mean</code> 保留 8 位高精度真值外，其余字段均为台账显示口径，
+            未经二次加工。两视图的 <code>mean_acousticness</code>
+            经 4 位小数比对 <b>22/22 一致</b>。
+          </li>
+        </ol>
+      </div>
+    </section>
+
+    <section id="sec-micro" class="panel" aria-labelledby="micro-title">
+      <div class="sec-head">
+        <div class="sec-index"><span class="num">III</span>图 3 / 微观个案</div>
+        <h2 id="micro-title">天然实验：同一首歌，被时代改写了什么</h2>
+        <p>
+          前两张图都在比较<b>不同的歌</b>，于是「年代差异」与「曲目差异」始终纠缠在一起。
+          这里换一个思路：只盯住 10 首被反复翻录的经典曲目，
+          <b>词曲是同一个，变的只有制作</b> —— 这是整份看板中控制变量最干净的一次对照。
+          但前提必须先用数据验一遍：它们真的是「同一首作品」吗？
+        </p>
+      </div>
+
+      <!-- ICC 金句 -->
+      <blockquote class="quote" id="micro-quote">
+        <p>情绪是作品的灵魂（ICC <b>0.64</b>），音色是时代的衣服（ICC <b>0.17</b>）。</p>
+        <div class="q-s">
+          同一首歌的 <b>436 条版本记录</b>里，「情绪基调 valence」有 <b>64%</b> 的方差属于歌本身 ——
+          圣诞歌永远欢快，换谁来唱、换哪个年代录，都不改；
+          而「原声度 acousticness」只有 <b>17%</b> 属于歌本身，
+          其余八成以上由<b>这一版录音的年代</b>决定。同一首《Silent Night》，
+          1985 年被 Bon Jovi 唱成 <code>0.091</code>，2011 年被 Michael Bublé 唱成 <code>0.959</code>。
+        </div>
+      </blockquote>
+
+      <!-- 主图：小多图 -->
+      <div class="mini-cap">
+        主图 · <b>10 首曲目的小多图</b> —— 共享 Y 轴 <code>[0,1]</code>，
+        横向位置全部对齐到同一年代，红色虚线为 <b>1980s 谷底共识</b>
+      </div>
+      <div class="chart" id="chart-micro">
+        <div class="loading" id="micro-loading"><i></i>正在加载图表引擎…</div>
+      </div>
+
+      <div class="legend">
+        <span><i class="swatch" style="background:#D1D1D6"></i>该曲目的十年均值</span>
+        <span><i class="swatch dot" style="border:1.5px solid var(--muted); background:#181818"></i>薄格子 n ≤ 2（实心改空心 + 虚线）</span>
+        <span><i class="swatch dash" style="border-top-color:rgba(255,55,95,.6)"></i>1980s 谷底共识</span>
+        <span><i class="swatch dot" style="border:1.5px solid var(--micro); background:transparent"></i>该曲目自身的最低点（不计薄格子）</span>
+      </div>
+
+      <!-- 副图：单曲深潜 -->
+      <div class="mini-cap">
+        副图 · 单曲深潜 <b>Silent Night</b> —— 全部 <b>44 条</b>版本记录（1941–2015），
+        一点一版；淡红柱为该十年的版本区间
+      </div>
+      <div class="chart mini" id="chart-micro-deep">
+        <div class="loading" id="micro-deep-loading"><i></i>正在加载图表引擎…</div>
+      </div>
+
+      <div class="legend">
+        <span><i class="swatch dot" style="background:var(--micro)"></i>单条版本（一点一版，共 44 条）</span>
+        <span><i class="swatch" style="background:var(--micro); opacity:.6"></i>视图的十年均值</span>
+        <span><i class="swatch band" style="background:var(--micro); opacity:.28"></i>该十年的版本区间（min–max）</span>
+        <span><i class="swatch dash" style="border-top-color:rgba(255,55,95,.75)"></i>谷底 → 复兴峰的引导线</span>
+      </div>
+
+      <!-- Phase 5 · B. 跨区块穿针引线 ②：把单曲深潜接回第 I 章的宏观衰退 -->
+      <div class="thread thread-macro">
+        <span class="th-ic">↘</span>
+        <div>
+          <b>这里发生的事，和第一张图完全同构。</b>
+          这条曲线从 <code>0.94</code> 跌到 <code>0.09</code>、再弹回近 <code>1.0</code> ——
+          <b>一个世纪在 170,653 首歌上的走势，被一首歌重演了一遍</b>。
+          《Silent Night》就是第 I 章那条百年下滑曲线的<b>单曲缩影</b>：
+          跌得最狠的十年同样是 1980s，回升的十年同样是 2000s 之后。
+          区别只在于：宏观曲线看不到「同一首作品」的对照，
+          而这里把变量锁死了 ——
+          <a class="th-x" href="#sec-macro">对照第 I 章的世纪降幅 −72.6%</a>，
+          两者的<b>形状</b>几乎重合。
+        </div>
+      </div>
+
+      <div class="readouts">
+        <div class="readout">
+          <div class="k">情绪 · 作品属性</div>
+          <div class="v acc">0.64</div>
+          <div class="d">ICC(1,1)，版本级粒度 · p &lt; 0.0002</div>
+        </div>
+        <div class="readout">
+          <div class="k">音色 · 时代属性</div>
+          <div class="v micro">0.17</div>
+          <div class="d">同一首歌，八成方差来自录音年代</div>
+        </div>
+        <div class="readout">
+          <div class="k">谷底 · 1980s</div>
+          <div class="v">0.6136</div>
+          <div class="d">对比 1950s 的 0.8017 —— 十年间掉了 0.188</div>
+        </div>
+        <div class="readout">
+          <div class="k">Silent Night 的振幅</div>
+          <div class="v micro">+0.868</div>
+          <div class="d">Bon Jovi 1985 <code>0.091</code> → Bublé 2011 <code>0.959</code></div>
+        </div>
+      </div>
+
+      <div class="notes">
+        <b>本图与前面两张图的数据口径不同，必须说清</b>
+        <ol>
+          <li>
+            <b>数据源是清洗后的锁定视图</b> <code>song_version_study_clean</code>（81 行 / 16 列）。
+            它由行级池 <b>647 行 / 15 首</b> 经三层清洗而来：剔除 5 首泛用名污染曲目（→ 457 行 / 10 首）、
+            创作年硬约束（→ 445 行）、同录音去重（→ 436 行），再聚合到
+            <code>(曲目, 十年)</code> 得 81 个格子。<b>清洗只作用于行层，曲目池继承自原视图，未二次调阈值。</b>
+          </li>
+          <li>
+            <b>「同一首作品」这个前提本身曾被污染，是被验出来的，不是被假定的。</b>
+            <code>overture</code> 的 46 条记录来自 33 位不同艺人（罗西尼 / 威尔第 / 莫扎特 + 百老汇 + The Who + Daft Punk），
+            <b>根本没有共同作品</b>；<code>joy to the world</code> 里混进了 Three Dog Night 的
+            「Jeremiah was a bullfrog」。这 5 首已整首剔除。
+          </li>
+          <li>
+            <b>年份字段不等于录音年</b>：<code>year</code> 与 <code>release_date</code> 的年份 647/647 一致，
+            但后者是<b>专辑发行日</b>。用「作品创作年」做硬约束，检出 <b>16 条物理不可能</b>的记录
+            （Bing Crosby 的《Silver Bells》标为 1945，而该曲 1950 才写成），
+            全部落在 1932–1949，1950 年后零违例。
+          </li>
+          <li>
+            <b>薄格子必须降级读</b>：81 个格子里有 <b>15 个</b> n ≤ 2，集中在 1970s–1990s
+            （1970s 平均每格仅 2.6 个版本）。这些格已用<b>空心点 + 虚线</b>标出，
+            其单点波动不可解读；另有 <b>19 个格子</b>清洗后无记录（1930s 多数曲目尚未写成，2020s 全空），
+            折线在这些位置<b>直接断开</b>，不做插值。
+          </li>
+          <li>
+            <b>ICC 口径已修正，务必以此处为准</b>：数值为 <code>ICC(1,1)</code>（含 <code>k̄</code> 校正，
+            <code>k̄</code> = 平均每首 43.6 条版本），观测粒度 = <b>单条版本记录</b>。
+            早先探查稿里的 <code>0.88 / 0.49</code> 是 <b>η²（组间平方和/总平方和）</b>在
+            <code>(曲目 × 十年)</code> <b>格均值</b>上算的 —— 既漏了 <code>k̄</code> 校正，
+            又用格均值抹掉了十年内的版本间方差，故系统性偏高。
+            在版本级粒度上两种统计量几乎一致（valence：ICC 0.638 / η² 0.622），
+            说明<b>造成偏差的是聚合粒度，不是公式选择</b>。
+          </li>
+          <li>
+            <b>别把回弹读成「音乐变原声了」</b>。1970s–1990s 的翻唱用的是当时的电声编制
+            （Bon Jovi 1985 的 Silent Night 原声度 <code>0.091</code>），2000s 之后转向复古编制
+            （Bublé 大乐队、Pentatonix 无伴奏、Josh Groban 交响）。这是<b>审美选择随时代摆动</b>，
+            不是录音技术指标回升。
+          </li>
+        </ol>
+      </div>
+    </section>
+
+    <section id="sec-space" class="panel" aria-labelledby="space-title">
+      <div class="sec-head">
+        <div class="sec-index"><span class="num">IV</span>图 4 / 空间漂移</div>
+        <h2 id="space-title">时代漂流记：一条先趴 30 年、再一跤跌倒的斜线</h2>
+        <p>
+          把 11 个十年各自的平均值放进同一张平面 —— 横轴是<b>原声度</b>，纵轴是<b>能量</b> ——
+          问一个很朴素的问题：<b>时代音乐指纹在这张平面里是怎么移动的？</b>
+          原本想用「四象限」来分类，但数据先把这个框架否掉了：
+          11 个点几乎落在<b>同一条斜线上</b>（第一主成分解释 <b>99.54%</b>），
+          而且负斜率的直线只可能穿过两个对角象限 —— 另两个<b>恒空</b>。
+          换个合理的原点，11 个十年里有 <b>7 个</b>的象限归属就会翻面。
+          <b>所以本图不画象限网格线</b>，改为按漂移节奏切分三段。
+        </p>
+      </div>
+
+      <!-- Phase 5 · B. 跨区块穿针引线 ①：把 1960s 断层接回 Phase 2 的机制解释 -->
+      <div class="thread thread-meso">
+        <span class="th-ic">↗</span>
+        <div>
+          <b>1960s 为什么在这里「一跤跌倒」？</b>
+          这条粗线不是孤立的形状 ——
+          <a class="th-x" href="#sec-meso">回看第 II 章的两条轨</a>：
+          器乐与人声在 1950s–1970s 是<b>平行下坠</b>的，两条一起塌，合起来才够粗。
+          而 1970s 之后器乐停住、人声继续走 —— 所以轨迹在这里<b>拐了弯</b>，
+          从「整体下坠」变成「斜着滑走」。
+          同一个七年，在两章里是同一件事的两种读法：
+          那边读的是<b>两条路的分家</b>，这边读的是<b>坐标平面上的一跤</b>。
+        </div>
+      </div>
+
+      <div class="mini-cap">
+        X 轴反向（<code>1 → 0</code>，原声衰减方向）、Y 轴正向（<code>0 → 1</code>，能量上升方向）；
+        <b>线宽编码相邻年代的欧氏距离</b>（越粗 = 走得越远），误差椭圆为 <code>σ/√n</code>
+      </div>
+      <div class="chart" id="chart-space">
+        <div class="loading" id="space-loading"><i></i>正在加载图表引擎…</div>
+      </div>
+
+      <div class="legend">
+        <span><i class="swatch dot" style="background:var(--accent)"></i>完整十年</span>
+        <span><i class="swatch dot" style="border:1.5px solid var(--muted); background:#181818"></i>残缺十年 n = 2,030</span>
+        <span><i class="swatch dot" style="background:var(--warn)"></i>1940s 离群点（双轴 z 达 ±1.3）</span>
+        <span><i class="swatch band" style="background:var(--muted); opacity:.5"></i>σ/√n 误差椭圆</span>
+        <span><i class="swatch" style="background:var(--warn); height:4px"></i>断层段（位移最大）</span>
+        <span><i class="swatch" style="background:var(--accent-dim); height:2px"></i>其余段（线宽 ∝ 位移）</span>
+      </div>
+
+      <div class="mini-cap">
+        副图 · <b>原声 × 能量在单曲内部的绑定强度</b> ——
+        <code>corr_ac_en</code> 逐十年演变；这是「共线性如何被渐进绑死」的机制解释
+      </div>
+      <div class="chart mini" id="chart-space-corr">
+        <div class="loading" id="space-corr-loading"><i></i>正在加载图表引擎…</div>
+      </div>
+
+      <div class="readouts">
+        <div class="readout">
+          <div class="k">最大跳跃 · 技术断层</div>
+          <div class="v warn">1960s→1970s</div>
+          <div class="d">距离 0.2536 · 占全世纪位移的 27.0%</div>
+        </div>
+        <div class="readout">
+          <div class="k">最小移动 · 风格停滞</div>
+          <div class="v">1980s→1990s</div>
+          <div class="d">距离 0.0124 —— 仅为最大段的 <b>4.9%</b></div>
+        </div>
+        <div class="readout">
+          <div class="k">断层带集中度</div>
+          <div class="v warn">53.8<small>%</small></div>
+          <div class="d">1950s→1960s 与 1960s→1970s 两段合计</div>
+        </div>
+        <div class="readout">
+          <div class="k">共线性诊断 PC1</div>
+          <div class="v acc">99.54<small>%</small></div>
+          <div class="d">11 点近似共线 · r = −0.9885</div>
+        </div>
+      </div>
+
+      <div class="notes">
+        <b>这张图推翻了它自己原本的框架，必须说清否证过程</b>
+        <ol>
+          <li>
+            <b>不是「绕着象限打转」，而是一条单向斜线。</b>
+            原本设想用 <span class="fm">acousticness ≥ 0.5 / energy ≥ 0.5</span> 划四象限分类 11 个十年。
+            但 11 个点做 PCA 后<b>第一主成分解释 99.54%</b>、两轴相关 <b>r = −0.9885</b> ——
+            它们几乎落在一条负斜率直线上。一条负斜率直线只会穿过「高原声低能量」与
+            「低原声高能量」两个对角象限，<b>另外两个象限恒空</b>。
+            让原点在 <code>[0.2, 0.8]²</code> 的 <b>961 个网格点</b>上扫动后，
+            <b>1960s–2020s 共 7 个十年的象限归属会发生翻面</b>（主导象限占比仅 35%–69%）。
+            → 象限是「切口位置」造的伪结构，<b>故本图不画象限网格线</b>。
+          </li>
+          <li>
+            <b>「先趴 30 年」不是修辞，是几何事实。</b>
+            1920s–1950s 四个点挤在一个极小范围内：
+            <code>acousticness</code> 极差仅 <b>0.069</b>、<code>energy</code> 极差仅 <b>0.052</b>，
+            覆盖面积只有后段的 <b>1/63</b>；这四点自身的第一主成分解释率仅 <b>80.6%</b>
+            （后段是 <b>99.7%</b>）。所以图上这四点用<b>虚线小框「抱团」</b>表示，
+            <b>不连线</b> —— 连起来会糊成一团黑点，反而误导读者以为存在一条清晰的小轨迹。
+          </li>
+          <li>
+            <b>断层不是单段，而是一对相邻段。</b>
+            1950s→1960s（<b>0.2512</b>）与 1960s→1970s（<b>0.2536</b>）几乎等长，
+            合计占<b>全世纪总位移的 53.8%</b>。所以正确表述是
+            <b>「1950s 末到 1970s 初，20 年走完全程的一半」</b>，而不是「1970s 突变」。
+            这也是图上这两段线宽最粗的原因。
+          </li>
+          <li>
+            <b>1960s 的「扁平台」= 断层在十年桶内的投影。</b>
+            逐年实查 <code>acousticness</code>：1964 年 <code>0.6941</code> →
+            1965 年 <code>0.6099</code> → 1966 年 <code>0.5248</code>，
+            <b>两年内暴跌 −0.170</b>，到 1969 年已至 <code>0.4488</code>。
+            一整年的样本被劈成「半原声/半电声」两半，叠加起来自然呈现为一个扁平台 ——
+            这正好解释了 Phase 2 观测到的<b>全表唯一负峰度（−0.718）</b>：
+            负峰度不是「双峰」，而是「扁平台」的数学特征。
+          </li>
+          <li>
+            <b>误差椭圆用 <code>σ/√n</code>，不是 <code>σ</code>。</b>
+            若用个体离散度 <code>mean ± 1σ</code>，<b>9/11 个十年会越出 [0,1] 边界</b>
+            （如 1920s 的 <code>ac ∈ [0.481, 1.122]</code>）——
+            这是分布被边界挤压的正常现象，不是数据错误。
+            <code>σ/√n</code>（均值的标准误）才是「均值置信区间」的正确语义，
+            实测最大半径 0.0053，<b>11/11 全部不越界</b>。
+          </li>
+          <li>
+            <b>别把 2020s 的回落读成「原声复兴」。</b>
+            2020s 的 <code>corr_ac_en</code> 从 2000s 的峰值 −0.7485 回落到 <b>−0.5000</b>，
+            看似「解绑」。但 2020s 只有 <b>2,030 行</b>（仅为 2010s 的 <b>10.3%</b>），
+            标准误是 2010s 的 <b>2.3 倍</b>。更关键的是：2020s 相对 2010s 的
+            <b><code>energy</code> 变化仅 +0.0022（z = 0.56，完全不显著）</b>，
+            而 <code>acousticness</code> 的下降 z = 7.70 才是真信号。
+            → 真实图景是「<b>原声度继续掉，但能量不再跟着涨</b>」= <b>两者的绑定松开了</b>，
+            不是「更嗨了」，也不是「回到原声」。
+          </li>
+          <li>
+            <b>⚠️ 两个「相关」不是同一个数，禁止混用。</b>
+            副图里每根条是视图列 <code>corr_ac_en</code> ——
+            <b>同一个十年内、1.5–2 万首单曲之间</b>的相关（如 2000s 的 −0.7485）。
+            而第 1 条里说的 <code>r = −0.9885</code> 是
+            <b>11 个十年均值点之间</b>的相关。<b>两者都真实，但层不同</b>，
+            一个是「层内」，一个是「层间」，不可互换。
+          </li>
+        </ol>
+      </div>
+    </section>
+
+    <!-- ═══════════════ Phase 5 · C. 数据底座与法医学声明 ═══════════════ -->
+    <section id="sec-forensic" class="panel" aria-labelledby="forensic-title">
+      <div class="sec-head">
+        <div class="sec-index"><span class="num">V</span>附录 / 方法论</div>
+        <h2 id="forensic-title">数据底座与法医学声明</h2>
+        <p>
+          前面四章讲的是「音乐发生了什么」。这一章讲的是<b>「我们凭什么敢这样说」</b>。
+          一个把百年趋势画成一条线的看板，最容易骗人的地方不在图，而在图背后
+          —— 数据怎么来的、洗掉了什么、哪些格子其实不该读。
+          下面把这几条防线一次摊开，供复核。
+        </p>
+      </div>
+
+      <div class="forensic-grid">
+        <div class="fcard" style="--fc:var(--accent)">
+          <div class="fk">防线一 · 单一数据底座</div>
+          <div class="fv">10<small>个锁定视图</small></div>
+          <div class="fd">
+            页面所有数字都来自 DuckDB 中 <b>10 个已锁定并逐条断言的视图</b>，
+            前端<b>零硬编码污染</b> —— 没有一处数值是手写进去的。
+            每个视图都有行数区间 / 字段存在性 / 列类型 / 空值 / 唯一性 / 值域六类断言。
+          </div>
+        </div>
+
+        <div class="fcard" style="--fc:var(--warn)">
+          <div class="fk">防线二 · 前提污染清除</div>
+          <div class="fv">5<small>首 + </small>16<small> 条</small></div>
+          <div class="fd">
+            「同一首作品」这个前提是被<b>验出来</b>的，不是被假定的：
+            剔除 <b>5 首泛用名污染曲目</b>（<code>overture</code> 的 46 条记录来自 33 位不同艺人，
+            根本没有共同作品）；再用「作品创作年」硬约束检出
+            <b>16 条物理不可能年份</b>（唱片发行日冒充录音年），全部落在 1932–1949。
+          </div>
+        </div>
+
+        <div class="fcard" style="--fc:var(--inst)">
+          <div class="fk">防线三 · 聚合粒度校正</div>
+          <div class="fv">0.64<small> / </small>0.17</div>
+          <div class="fd">
+            ICC 组内相关系数已修正<b>聚合粒度偏差</b>。
+            早期探查稿里的 <code>0.88 / 0.49</code> 是在
+            <code>(曲目 × 十年)</code> <b>格均值</b>上算的 η² —— 既漏了每首 43.6 条版本量的校正，
+            又抹掉了十年内版本间方差。回到<b>版本级粒度</b>后为 0.638 / 0.174。
+          </div>
+        </div>
+
+        <div class="fcard" style="--fc:var(--muted)">
+          <div class="fk">防线四 · 薄格子强制降级</div>
+          <div class="fv">15<small> / 81 格</small></div>
+          <div class="fd">
+            所有薄格子（<b>n ≤ 2</b>）已做<b>视觉降级</b>：实心点改空心 + 折线改虚线，
+            单点波动不可解读。另有 <b>19 个格子</b>清洗后无记录，
+            折线在这些位置<b>直接断开、不做插值</b> —— 宁可留白，不编故事。
+          </div>
+        </div>
+      </div>
+
+      <div class="notes">
+        <b>还有三条容易被忽略、但同样影响结论可靠性的口径</b>
+        <ol>
+          <li>
+            <b>禁止跨年代比较绝对数量。</b>数据集采用<b>配额抽样</b>（每十年锁定 19k–20k 首，近均匀），
+            因此只能比较<b>强度指标</b>（比例 / 均值 / 离散度），绝对曲目数没有意义 ——
+            配额本身就是研究者定的。
+          </li>
+          <li>
+            <b>色带越界是边界挤压，不是数据错误。</b><code>mean ± 1σ</code> 在 5 个十年会越出
+            <code>[0,1]</code> 值域，绘图时已裁剪，贴边处色带看起来「被削平」属正常现象。
+          </li>
+          <li>
+            <b>同一个统计量在不同层级上会给出不同答案。</b>例如
+            <code>r = −0.9885</code> 说的是 <b>11 个十年均值点之间</b>的相关，
+            而 <code>corr_ac_en</code> 说的是<b>单曲内部</b>的绑定。
+            两者都真实但<b>层不同</b>，不可互换，本页已逐处标明层级。
+          </li>
+        </ol>
+      </div>
+
+      <!-- 四层验证：把「验证过」写成一张可核对的体检单，而不是一句口号 -->
+      <div class="notes fverify">
+        <b>四层验证 · 本次交付的运行记录</b>
+        <table>
+          <thead>
+            <tr><th>层</th><th>入口</th><th>范围</th><th>结果</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>数据层</td>
+              <td class="v"><code>verify/lv10.py</code></td>
+              <td>10 个锁定视图 × 六类断言（行数 / 字段 / 类型 / 空值 / 唯一 / 值域）</td>
+              <td class="pass">10 / 10</td>
+            </tr>
+            <tr>
+              <td>源码层</td>
+              <td class="v"><code>verify/check4.py</code></td>
+              <td>数据块与锁定视图逐值比对 · 元素计数 · 分区语义 · 注释完整性</td>
+              <td class="pass">ALL PASS</td>
+            </tr>
+            <tr>
+              <td>渲染层</td>
+              <td class="v"><code>verify/render_check4.py</code></td>
+              <td>三档宽度 × 八类几何断言（计数 / 线宽编码 / 越界 / 反向轴 / 碰撞 / 呼应）</td>
+              <td class="pass">ALL PASS</td>
+            </tr>
+            <tr>
+              <td>交互层</td>
+              <td class="v"><code>verify/probe4.py</code></td>
+              <td>Tooltip 探针：1930s–2020s 逐点命中，含两侧断层距离</td>
+              <td class="pass">ALL PASS</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <footer>
+      <span>曲风数据分析 · D3 看板 Phase 5（全局整合 · 最终收口）</span>
+      <span>数据源：DuckDB 锁定视图 <code>acoustic_trajectory</code> · <code>track_type_dispersion</code> · <code>song_version_study_clean</code> · <code>era_quadrant</code> · 10 视图校验全绿</span>
+    </footer>
+
+  </main>
+</div>
+
+<!-- Tooltip 挂到 body 下，用 fixed 定位，避免被卡片 overflow 裁剪 -->
+<div class="tooltip" id="tooltip" role="status" aria-live="polite"></div>
+
+<!-- ══════════════════════════════════════════════════════════════════
+     D3.js v7 加载器
+     ──────────────────────────────────────────────────────────────
+     主源：https://d3js.org/d3.v7.min.js（规范指定）
+     镜像：jsDelivr（实测国内快约 3.7×：4.2s vs 15.4s）
+
+     为什么不用普通的同步 script 标签：
+     同步标签会把整个页面阻塞在主源的下载上。实测 d3js.org 在本机需
+     15.4s，用户会先看到十几秒白屏。因此改为异步 + 超时切换：
+       · 主源 2.5s 内就绪  → 直接用（缓存命中时通常 <100ms）
+       · 2.5s 仍未就绪     → 立即并行拉取镜像，谁先完成谁生效
+     两个源都不通时，页面仍完整可读，只是图表区显示错误提示。
+     ══════════════════════════════════════════════════════════════════ -->
+<script>
+(function(){
+  var SOURCES = [
+    'https://d3js.org/d3.v7.min.js',
+    'https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js'
+  ];
+  var TIMEOUT_MS = 2500;   // 主源超时阈值
+
+  var settled  = false;    // 是否已确定引擎（成功或彻底失败）
+  var callback = null;     // 主脚本注册的就绪回调
+
+  function finish(ok){
+    if (settled) return;
+    settled = true;
+    window.__d3Loaded = ok;
+    if (callback) callback(ok);
+  }
+
+  function attempt(i, isFallback){
+    if (i >= SOURCES.length) { finish(false); return; }
+
+    var el = document.createElement('script');
+    el.src   = SOURCES[i];
+    el.async = true;
+    el.onload  = function(){ finish(true); };
+    el.onerror = function(){ attempt(i + 1, true); };
+    document.head.appendChild(el);
+
+    // 仅对主源设超时：超时后不取消它（可能马上就返回），而是并行拉镜像
+    if (!isFallback){
+      setTimeout(function(){ if (!settled) attempt(i + 1, true); }, TIMEOUT_MS);
+    }
+  }
+
+  // 供下方主脚本注册回调（若引擎已就绪则立即执行）
+  window.__onD3Ready = function(fn){
+    if (settled) fn(window.__d3Loaded);
+    else callback = fn;
+  };
+
+  attempt(0, false);
+})();
+</script>
+
+<script>
+/* ═══════════════════════════════════════════════════════════════════════
+   1. 数据层
+   ═══════════════════════════════════════════════════════════════════════
+   来源：DuckDB 锁定视图 acoustic_trajectory，11 行硬编码。
+   字段：decade 年代 | mean 均值 | sd 样本标准差(ddof=1) |
+        p25/median/p75 四分位 | n 样本量 | partial 是否残缺十年
+   ⚠️ 数值与 locked_views.py 台账逐一核对，未做任何四舍五入以外的加工。
+   ═══════════════════════════════════════════════════════════════════════ */
+const ACOUSTIC_TRAJECTORY = [
+  { decade:1920, mean:0.8016, sd:0.3204, p25:0.7322, median:0.9860, p75:0.9940, n: 5126, partial:false },
+  { decade:1930, mean:0.8677, sd:0.2122, p25:0.8530, median:0.9660, p75:0.9890, n: 9549, partial:false },
+  { decade:1940, mean:0.8710, sd:0.2267, p25:0.8800, median:0.9680, p75:0.9910, n:15378, partial:false },
+  { decade:1950, mean:0.8403, sd:0.1867, p25:0.7780, median:0.9090, p75:0.9750, n:19850, partial:false },
+  { decade:1960, mean:0.6240, sd:0.2899, p25:0.4190, median:0.7050, p75:0.8610, n:19549, partial:false },
+  { decade:1970, mean:0.4002, sd:0.3089, p25:0.1050, median:0.3610, p75:0.6670, n:20000, partial:false },
+  { decade:1980, mean:0.2986, sd:0.3144, p25:0.0241, median:0.1690, p75:0.5240, n:19850, partial:false },
+  { decade:1990, mean:0.3075, sd:0.3165, p25:0.0244, median:0.1850, p75:0.5520, n:19901, partial:false },
+  { decade:2000, mean:0.2698, sd:0.3038, p25:0.0156, median:0.1340, p75:0.4670, n:19646, partial:false },
+  { decade:2010, mean:0.2641, sd:0.2966, p25:0.0230, median:0.1320, p75:0.4380, n:19774, partial:false },
+  { decade:2020, mean:0.2199, sd:0.2405, p25:0.0358, median:0.1310, p75:0.3210, n: 2030, partial:true  }
+];
+
+/* ═══════════════════════════════════════════════════════════════════════
+   1b. 数据层 B（Phase 2）—— track_type_dispersion，22 行
+   ═══════════════════════════════════════════════════════════════════════
+   来源：DuckDB 锁定视图 track_type_dispersion（22 行 × 13 列）。
+   字段：decade 年代 | type 轨道 | n 样本量 | mean 均值 |
+        p25/med/p75 四分位 | lo/mid/hi 三段占比(%)。
+   ⚠️ 三段占比的界：lo = ac<0.15，mid = 0.15–0.85，hi = ac>0.85。
+      三者之和恒为 100%（实查 22/22 落在 99.99–100.01）。
+   ⚠️ 数值与 locked_views.py 台账逐值核对，未做任何四舍五入以外的加工。
+   ═══════════════════════════════════════════════════════════════════════ */
+const TRACK_DISPERSION = [
+  /* ⚠️ mean 故意保留 8 位小数（台账只给 4 位显示值）。唯一原因：
+     Tooltip 的 Gap = inst.mean − voc.mean 必须由真值相减，才能在 toFixed(4)
+     后与台账一致 —— 1970s 真值 0.0817；若用两个 4 位显示值相减会得 0.0818
+     （先舍入再相减的误差传播）。p25/med/p75 与三段占比均为台账显示口径。 */
+  { decade:1920, type:'instrumental', n: 2090, mean:0.97263575, p25:0.988, med:0.993, p75:0.995, lo: 1.05, mid: 1.77, hi:97.18 },
+  { decade:1920, type:'vocal',        n: 3036, mean:0.68378072, p25:0.383, med:0.926, p75:0.989, lo:15.81, mid:29.55, hi:54.64 },
+  { decade:1930, type:'instrumental', n: 2798, mean:0.92750387, p25:0.942, med:0.986, p75:0.994, lo: 1.04, mid:11.44, hi:87.53 },
+  { decade:1930, type:'vocal',        n: 6751, mean:0.84290496, p25:0.800, med:0.954, p75:0.986, lo: 2.00, mid:27.94, hi:70.06 },
+  { decade:1940, type:'instrumental', n: 6036, mean:0.93488316, p25:0.951, med:0.988, p75:0.994, lo: 1.49, mid: 8.68, hi:89.83 },
+  { decade:1940, type:'vocal',        n: 9342, mean:0.82968178, p25:0.818, med:0.948, p75:0.983, lo: 5.16, mid:23.74, hi:71.10 },
+  { decade:1950, type:'instrumental', n: 5239, mean:0.90616474, p25:0.894, med:0.968, p75:0.990, lo: 1.13, mid:16.82, hi:82.06 },
+  { decade:1950, type:'vocal',        n:14611, mean:0.81672986, p25:0.742, med:0.878, p75:0.960, lo: 1.15, mid:42.70, hi:56.15 },
+  { decade:1960, type:'instrumental', n: 3247, mean:0.72597435, p25:0.591, med:0.855, p75:0.960, lo: 9.61, mid:39.30, hi:51.09 },
+  { decade:1960, type:'vocal',        n:16302, mean:0.60370476, p25:0.401, med:0.679, p75:0.833, lo:10.56, mid:67.46, hi:21.98 },
+  { decade:1970, type:'instrumental', n: 2209, mean:0.47286406, p25:0.093, med:0.448, p75:0.852, lo:30.19, mid:44.68, hi:25.12 },
+  { decade:1970, type:'vocal',        n:17791, mean:0.39113454, p25:0.107, med:0.353, p75:0.646, lo:30.12, mid:61.03, hi: 8.85 },
+  { decade:1980, type:'instrumental', n: 2373, mean:0.47112124, p25:0.008, med:0.416, p75:0.936, lo:41.17, mid:23.09, hi:35.74 },
+  { decade:1980, type:'vocal',        n:17477, mean:0.27521347, p25:0.026, med:0.160, p75:0.475, lo:48.62, mid:45.88, hi: 5.50 },
+  { decade:1990, type:'instrumental', n: 2207, mean:0.47182183, p25:0.009, med:0.447, p75:0.927, lo:40.14, mid:24.97, hi:34.89 },
+  { decade:1990, type:'vocal',        n:17694, mean:0.28704108, p25:0.026, med:0.175, p75:0.501, lo:47.24, mid:46.62, hi: 6.14 },
+  { decade:2000, type:'instrumental', n: 1675, mean:0.55228718, p25:0.054, med:0.724, p75:0.944, lo:30.45, mid:30.39, hi:39.16 },
+  { decade:2000, type:'vocal',        n:17971, mean:0.24342798, p25:0.015, med:0.121, p75:0.409, lo:53.83, mid:41.57, hi: 4.60 },
+  { decade:2010, type:'instrumental', n: 1766, mean:0.45817138, p25:0.014, med:0.393, p75:0.926, lo:41.00, mid:26.73, hi:32.28 },
+  { decade:2010, type:'vocal',        n:18008, mean:0.24506134, p25:0.024, med:0.125, p75:0.399, lo:53.43, mid:41.68, hi: 4.90 },
+  { decade:2020, type:'instrumental', n:   28, mean:0.48447346, p25:0.009, med:0.496, p75:0.938, lo:42.86, mid:25.00, hi:32.14 },
+  { decade:2020, type:'vocal',        n: 2002, mean:0.21623099, p25:0.036, med:0.131, p75:0.314, lo:54.05, mid:43.46, hi: 2.50 }
+];
+
+/* 按年代配对，便于逐点读取两轨 */
+const TTD_DECADES = [...new Set(TRACK_DISPERSION.map(d => d.decade))];
+const TTD_PAIRS = TTD_DECADES.map(dec => ({
+  decade: dec,
+  inst: TRACK_DISPERSION.find(d => d.decade === dec && d.type === 'instrumental'),
+  voc : TRACK_DISPERSION.find(d => d.decade === dec && d.type === 'vocal')
+}));
+
+/* ⚠️ 只有 28 首样本的轨道：单列出来，供视觉降级与 Tooltip 警告共用，
+      避免在多处硬编码「28」这个数字。 */
+const TTD_TINY_N = 50;
+
+/* ═══════════════════════════════════════════════════════════════════════
+   2. 全局常量与工具
+   ═══════════════════════════════════════════════════════════════════════ */
+const CFG = {
+  yDomain   : [0, 1],       // 原声度天然值域
+  bandFill  : 'var(--accent)',
+  pointR    : 5,
+  hoverR    : 22,           // 透明命中区半径（比视觉半径大，便于鼠标捕获）
+  animMs    : 1400,
+  clamp     : (v, lo, hi) => Math.max(lo, Math.min(hi, v))
+};
+
+const fmtPct  = v => (v * 100).toFixed(1) + '%';
+const fmtNum  = v => v.toLocaleString('en-US');
+const fmt4    = v => v.toFixed(4);
+
+/* ═══════════════════════════════════════════════════════════════════════
+   3. 图表 1 · acoustic_trajectory
+   ═══════════════════════════════════════════════════════════════════════ */
+const macroEl   = document.getElementById('chart-macro');
+const wrapEl    = document.getElementById('wrap-macro');
+const anno1940  = document.getElementById('anno-1940');
+const tooltip   = document.getElementById('tooltip');
+
+let playedIntro = false;   // 入场动画只在首次渲染播放，resize 时不重播
+
+function renderMacro(){
+  const W = macroEl.clientWidth;
+  if (!W) return;
+
+  const isIntro = !playedIntro;   // 是否为首次渲染（决定要不要播入场动画）
+
+  /* ── 3.1 尺寸与边距 ────────────────────────────────────────────────
+     高度随宽度阶梯变化，保证小屏不出现「瘦长条」，大屏不平坦。
+     top 留 92px 是为了容纳 1940s 的浮层注释。                          */
+  const H = W < 560 ? 400 : (W < 900 ? 410 : 480);
+  // top 需要同时容纳：1940s 浮层注释（约 78px）+ 数据点 + 引导线。
+  // 窄屏 y(mean) 被压得更低，故顶部留白给得更大。
+  const M = {
+    top   : W < 560 ? 136 : 92,
+    right : W < 560 ? 20 : 44,
+    bottom: W < 620 ? 74 : 56,
+    left  : W < 560 ? 44 : 60
+  };
+  const iw = Math.max(10, W - M.left - M.right);
+  const ih = Math.max(10, H - M.top - M.bottom);
+
+  /* ── 3.2 比例尺（scale）───────────────────────────────────────────
+     x：年代是离散类别 → scalePoint，等距分布，padding 让首尾点不贴边。
+        （若用 scaleLinear，1920→2020 的间距会和 decade 语义脱钩。）
+     y：原声度 [0,1] 连续值 → scaleLinear，range 反向（SVG y 轴向下）。 */
+  const x = d3.scalePoint()
+      .domain(ACOUSTIC_TRAJECTORY.map(d => d.decade))
+      .range([0, iw])
+      .padding(0.55);
+
+  const y = d3.scaleLinear()
+      .domain(CFG.yDomain)          // [0, 1]
+      .range([ih, 0]);
+
+  /* ── 3.3 路径生成器（path generator）──────────────────────────────
+     curveMonotoneX：平滑但不过冲（不会在数据点之间「甩」出假极值），
+     是时间序列折线最稳妥的插值方式 —— 比 curveBasis 更忠于数据。   */
+  const lineMean = d3.line()
+      .x(d => x(d.decade))
+      .y(d => y(d.mean))
+      .curve(d3.curveMonotoneX);
+
+  /* 误差带：y0 为下界、y1 为上界。
+     ⚠️ 关键：mean±sd 在 5 个十年会越出 [0,1]，必须用 CLAMP.clamp() 裁剪，
+        否则色带会画到坐标轴之外，视觉上像「数据溢出」。              */
+  const areaBand = d3.area()
+      .x(d => x(d.decade))
+      .y0(d => y(CFG.clamp(d.mean - d.sd, 0, 1)))   // 下界裁剪到 0
+      .y1(d => y(CFG.clamp(d.mean + d.sd, 0, 1)))   // 上界裁剪到 1
+      .curve(d3.curveMonotoneX);
+
+  /* 2020s 残缺段单独成线：只取最后两个点，用虚线画，视觉上与主线断开 */
+  const tailData = ACOUSTIC_TRAJECTORY.slice(-2);
+  const lineTail = d3.line()
+      .x(d => x(d.decade))
+      .y(d => y(d.mean))
+      .curve(d3.curveMonotoneX);
+
+  /* ── 3.4 建立 SVG 骨架 ─────────────────────────────────────────────
+     每次重绘整段重建 DOM —— 图小、元素少，比 diff 更新更简单可靠，
+     也避免 resize 时残留旧节点。                                     */
+  // 清掉「加载中」占位（首次渲染时存在）
+  const loadingEl = document.getElementById('macro-loading');
+  if (loadingEl) loadingEl.remove();
+
+  d3.select(macroEl).selectAll('svg').remove();
+
+  const svg = d3.select(macroEl)
+      .append('svg')
+      .attr('width', W)
+      .attr('height', H)
+      .attr('viewBox', `0 0 ${W} ${H}`)      // 双保险：窄容器下也不横向溢出
+      .attr('role', 'img')
+      .attr('aria-label',
+            '折线图：1920s 至 2020s 每十年的原声度均值与标准差，均值由 0.80 降至 0.22');
+
+  const g = svg.append('g').attr('transform', `translate(${M.left},${M.top})`);
+
+  /* 渐变定义：给误差带一点纵向层次，避免死板的单色块 */
+  const defs = svg.append('defs');
+  const grad = defs.append('linearGradient')
+      .attr('id', 'bandGrad')
+      .attr('x1', '0').attr('y1', '0').attr('x2', '0').attr('y2', '1');
+  grad.append('stop').attr('offset', '0%').attr('stop-color', '#5AC8FA').attr('stop-opacity', .20);
+  grad.append('stop').attr('offset', '100%').attr('stop-color', '#5AC8FA').attr('stop-opacity', .09);
+
+  /* ── 3.5 网格线（横向，6 档）─────────────────────────────────────── */
+  g.append('g')
+      .attr('class', 'grid')
+      .selectAll('line')
+      .data(y.ticks(5))
+      .join('line')
+      .attr('x1', 0).attr('x2', iw)
+      .attr('y1', d => y(d)).attr('y2', d => y(d));
+
+  /* ── 3.6 坐标轴 ──────────────────────────────────────────────────── */
+  const smallScreen = W < 620;
+
+  g.append('g')
+      .attr('class', 'axis y-axis')
+      .call(d3.axisLeft(y).ticks(5).tickSize(0).tickPadding(9)
+              .tickFormat(d => d.toFixed(1)));
+
+  g.append('g')
+      .attr('class', 'axis x-axis')
+      .attr('transform', `translate(0,${ih})`)
+      .call(d3.axisBottom(x).tickSize(0).tickPadding(11)
+              .tickFormat(d => d + 's'))
+      .selectAll('text')
+        .attr('text-anchor', smallScreen ? 'end' : 'middle')
+        .attr('transform', smallScreen ? 'rotate(-45)' : null)
+        .attr('dx',       smallScreen ? '-0.4em' : null)
+        .attr('dy',       smallScreen ? '0.1em' : null);
+
+  /* 轴标题 */
+  g.append('text').attr('class', 'y-label')
+      .attr('transform', 'rotate(-90)')
+      .attr('x', -ih / 2).attr('y', -M.left + 14)
+      .attr('text-anchor', 'middle')
+      .text('ACOUSTICNESS');
+
+  g.append('text').attr('class', 'x-label')
+      .attr('x', iw / 2).attr('y', ih + (smallScreen ? 68 : 48))
+      .attr('text-anchor', 'middle')
+      .text('DECADE');
+
+  /* ── 3.7 误差带 → 主线 → 数据点（绘制顺序即叠放顺序）─────────────── */
+
+  // (a) 误差带面积
+  //     ⚠️ 刻意不设 stroke：area 路径在上界与下界之间是闭合的，若加描边，
+  //        左右两端会各出现一条竖直的"封口线"，看起来像数据被硬生生切断。
+  //        只保留填充，色带的边界感由渐变本身提供。
+  const bandPath = g.append('path')
+      .datum(ACOUSTIC_TRAJECTORY)
+      .attr('d', areaBand)
+      .attr('fill', 'url(#bandGrad)')
+      .attr('stroke', 'none');
+
+  // (b) 主线（完整 11 点，含 2020s）
+  const linePath = g.append('path')
+      .datum(ACOUSTIC_TRAJECTORY)
+      .attr('d', lineMean)
+      .attr('fill', 'none')
+      .attr('stroke', '#5AC8FA')
+      .attr('stroke-width', 2.6)
+      .attr('stroke-linecap', 'round')
+      .attr('stroke-linejoin', 'round');
+
+  // (c) 末段虚线覆盖（2010s → 2020s，标记残缺十年）
+  const tailPath = g.append('path')
+      .datum(tailData)
+      .attr('d', lineTail)
+      .attr('fill', 'none')
+      .attr('stroke', '#8E8E93')
+      .attr('stroke-width', 2.6)
+      .attr('stroke-dasharray', '5 5')
+      .attr('stroke-linecap', 'round')
+      .attr('opacity', isIntro ? 0 : 1);
+
+  // (d) 数据点
+  const pts = g.append('g').attr('class', 'points')
+      .selectAll('circle')
+      .data(ACOUSTIC_TRAJECTORY)
+      .join('circle')
+      .attr('cx', d => x(d.decade))
+      .attr('cy', d => y(d.mean))
+      .attr('r', CFG.pointR)
+      // 1940s 用警示色实心；其余深色填充 + 彩色描边（空心质感）；残缺十年描边转灰
+      .attr('fill',   d => d.decade === 1940 ? '#FF9F0A' : '#121212')
+      .attr('stroke', d => d.decade === 1940 ? '#FF9F0A'
+                        : (d.partial ? '#8E8E93' : '#5AC8FA'))
+      .attr('stroke-width', 2.4)
+      .attr('opacity', isIntro ? 0 : 1);
+
+  /* 1940s 锚点：从数据取，避免硬编码漂移 */
+  const d40 = ACOUSTIC_TRAJECTORY.find(d => d.decade === 1940);
+
+  /* 1940s 额外加一圈光晕环，让它从视觉上「跳出来」 */
+  const halo = g.append('circle')
+      .attr('cx', x(d40.decade)).attr('cy', y(d40.mean))
+      .attr('r', CFG.pointR + 5)
+      .attr('fill', 'none')
+      .attr('stroke', '#FF9F0A')
+      .attr('stroke-width', 1.5)
+      .attr('class', 'halo')
+      .attr('stroke-opacity', isIntro ? 0 : .35);
+
+  /* ── 3.8 转折参考线（1960s）───────────────────────────────────────
+     叙事锚点：均值从 1950s 的 0.8403 跌到 1960s 的 0.6240，
+     是整条曲线斜率最大的一段，也是"1960s 中期分界"这一结论的视觉落点。
+     刻意画得很淡（opacity .14），只作暗示，不与数据争夺注意力。 */
+  const xTurn = x(1960);
+
+  g.append('line')
+      .attr('x1', xTurn).attr('x2', xTurn)
+      .attr('y1', 0).attr('y2', ih)
+      .attr('stroke', '#FF9F0A')
+      .attr('stroke-opacity', .14)
+      .attr('stroke-width', 1)
+      .attr('stroke-dasharray', '2 6');
+
+  g.append('text')
+      .attr('class', 'x-label')
+      .attr('x', xTurn + 9)
+      .attr('y', ih - 10)
+      .attr('fill', '#FF9F0A')
+      .attr('fill-opacity', .68)
+      .text('1960s 起陡降');
+
+  /* ── 3.9 1940s 浮层注释 + 引导线 ──────────────────────────────────
+     两者是一体的：必须先定位 HTML 注释框、读出它的真实高度，
+     再据此决定引导线的上端点。
+     ⚠️ 不能用固定偏移量算引导线：1940s 的值 0.871 本就贴近画布顶部，
+        窄屏下 y(mean) 只剩 20 多像素，减一个固定值会把线算成负数。
+        用 offsetHeight 实测框高，宽窄屏都能正确衔接。 */
+
+  // ① 定位注释框（水平居中交给 CSS 的 transform，这里只给 left/top）
+  //    offset 124 让框底到数据点之间留下约 45px —— 既避开误差带顶部，
+  //    也给引导线留出足够长度（短于此线会退化成几乎看不见的小点）。
+  //    窄屏时点更靠顶，用 max(8) 兜住上边界。
+  const annoHalf = (W < 640 ? 86 : 100) + 4;   // 框宽的一半 + 4px 余量（与 CSS 同步）
+  anno1940.style.left = CFG.clamp(x(d40.decade) + M.left, annoHalf, W - annoHalf) + 'px';
+  anno1940.style.top  = Math.max(8, y(d40.mean) + M.top - 124) + 'px';
+  if (isIntro) anno1940.classList.add('reveal');
+
+  // ② 读实际高度，反推引导线两端（都是 SVG 内部坐标）
+  const annoBotCss = (parseFloat(anno1940.style.top) || 0) + (anno1940.offsetHeight || 78);
+  const leaderY1   = y(d40.mean) - CFG.pointR - 5;   // 起点：数据点正上方
+  const leaderY2   = (annoBotCss - M.top) + 7;       // 终点：框底再往下 7px
+                                                     // （极端比例下可能为负，svg 已设 overflow:visible）
+
+  const leader = g.append('line')
+      .attr('class', 'leader')
+      .attr('x1', x(d40.decade)).attr('x2', x(d40.decade))
+      .attr('y1', leaderY1)
+      .attr('y2', leaderY2)
+      .attr('stroke', '#FF9F0A')
+      .attr('stroke-width', 1)
+      .attr('stroke-dasharray', '3 3')
+      .attr('stroke-opacity', isIntro ? 0 : .55);
+
+  /* ── 3.9 Hover 交互层 ──────────────────────────────────────────────
+     用一整块透明 overlay 接管鼠标，按 x 坐标寻找最近年代。
+     好处：悬停在「点」上或「误差带」上都能触发，命中率高且行为一致。 */
+  const hoverLine = g.append('line')
+      .attr('class', 'hover-line')
+      .attr('y1', 0).attr('y2', ih)
+      .attr('stroke', '#5AC8FA')
+      .attr('stroke-opacity', 0)
+      .attr('stroke-width', 1)
+      .attr('stroke-dasharray', '3 4')
+      .style('pointer-events', 'none');
+
+  const hoverRing = g.append('circle')
+      .attr('r', CFG.pointR + 6)
+      .attr('fill', 'none')
+      .attr('stroke', '#5AC8FA')
+      .attr('stroke-width', 2)
+      .attr('opacity', 0)
+      .style('pointer-events', 'none');
+
+  g.append('rect')
+      .attr('class', 'overlay')
+      .attr('x', -M.left / 2).attr('y', -M.top / 2)
+      .attr('width', iw + M.left).attr('height', ih + M.top + M.bottom / 2)
+      .attr('fill', 'transparent')
+      .style('cursor', 'crosshair')
+      .on('mousemove', function(ev){
+        // 把鼠标坐标转成 SVG 内坐标系（g 的局部坐标），再找最近的 decade
+        // ⚠️ 必须传 g.node()（DOM 节点）：g 是 d3 selection，
+        //    而 d3.pointer(ev, selection) 找不到 ownerSVGElement /
+        //    getBoundingClientRect，会静默 fallback 成 [pageX, pageY]，
+        //    也就是绝对屏幕坐标 —— Tooltip 会整体平移、右端恒为 2020s。
+        const [mx] = d3.pointer(ev, g.node());
+        const d = ACOUSTIC_TRAJECTORY[nearestIdx(x, mx)];
+
+        // 竖直指示线
+        hoverLine.attr('x1', x(d.decade)).attr('x2', x(d.decade))
+                 .attr('stroke-opacity', .38);
+
+        // 高亮环
+        const isWarn = d.decade === 1940;
+        hoverRing.attr('cx', x(d.decade)).attr('cy', y(d.mean))
+                 .attr('stroke', isWarn ? '#FF9F0A' : '#5AC8FA')
+                 .attr('opacity', .85);
+
+        showTooltip(ev, d);
+      })
+      .on('mouseleave', function(){
+        hoverLine.attr('stroke-opacity', 0);
+        hoverRing.attr('opacity', 0);
+        hideTooltip();
+      });
+
+  /* 按屏幕 x 坐标找最近的 decade 索引 */
+  function nearestIdx(scale, mx){
+    let best = 0, bestD = Infinity;
+    ACOUSTIC_TRAJECTORY.forEach((d, i) => {
+      const dist = Math.abs(scale(d.decade) - mx);
+      if (dist < bestD){ bestD = dist; best = i; }
+    });
+    return best;
+  }
+
+  /* ── 3.10 入场动画 ────────────────────────────────────────────────
+     时序：误差带淡入 → 主线自左向右「生长」→ 数据点依次弹出
+           → 1940s 的引导线 / 光晕 / 浮层注释最后揭示。
+
+     ⚠️ 健壮性设计（重要）：
+     d3.transition 由 requestAnimationFrame 驱动。若动画播放期间用户切走
+     标签页、系统进入休眠或浏览器后台节流，rAF 会停摆，transition 的
+     on('end') 永不触发 —— 主线就会永久停留在 dasharray 截断状态，
+     变成一张「画了一半」的图。
+     因此这里额外挂一个 setTimeout 硬兜底（定时器不受 rAF 节流影响），
+     无论动画是否正常结束，都在预算时间后无条件把所有元素复位到终态。 */
+
+  const settleAll = () => {
+    // ⚠️ 必须先 interrupt()：被冻结的 transition 仍然"活着"，一旦 rAF 恢复
+    //    就会用插值中间值覆盖下面写入的终态（误差带会重新变透明）。
+    //    中断之后再写属性，才能真正钉死终态。
+    [bandPath, linePath, tailPath, halo, leader].forEach(sel => sel.interrupt());
+    pts.interrupt();
+
+    linePath.attr('stroke-dasharray', null).attr('stroke-dashoffset', null);
+    bandPath.attr('opacity', 1);
+    pts.attr('opacity', 1);
+    tailPath.attr('opacity', 1);
+    halo.attr('stroke-opacity', .35);
+    leader.attr('stroke-opacity', .55);
+
+    // 注释框：CSS animation 的优先级高于 inline style，无法靠改 opacity 纠正，
+    //          必须移除动画类让元素回到默认的 opacity:1。
+    anno1940.classList.remove('reveal');
+  };
+
+  // 尊重系统「减少动态效果」偏好：直接落到终态，不播动画
+  const reduceMotion =
+    window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  if (isIntro && !reduceMotion){
+    playedIntro = true;
+    const len = linePath.node().getTotalLength();
+
+    bandPath.attr('opacity', 0)
+      .transition().duration(760).ease(d3.easeCubicOut)
+      .attr('opacity', 1);
+
+    // 描边动画：用 dasharray/dashoffset 做「画笔」效果
+    linePath
+      .attr('stroke-dasharray', `${len} ${len}`)
+      .attr('stroke-dashoffset', len)
+      .transition().delay(160).duration(CFG.animMs).ease(d3.easeCubicOut)
+      .attr('stroke-dashoffset', 0)
+      .on('end', function(){ d3.select(this).attr('stroke-dasharray', null); });
+
+    pts.transition()
+      .delay((d, i) => 480 + i * 68)
+      .duration(340).ease(d3.easeBackOut)
+      .attr('opacity', 1);
+
+    tailPath.transition().delay(1180).duration(500).attr('opacity', 1);
+
+    // 1940s 三件套：光晕 → 引导线 → 浮层注释
+    halo.transition().delay(1220).duration(520).attr('stroke-opacity', .35);
+    leader.transition().delay(1300).duration(420).attr('stroke-opacity', .55);
+    // 注释框由 .anno.reveal 的 CSS animation 自行延迟揭示，无需 JS 介入
+
+    // 兜底复位：定时器走真实时钟，不受 rAF 节流影响
+    setTimeout(settleAll, CFG.animMs + 900);
+  } else {
+    playedIntro = true;
+    settleAll();
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   4. Tooltip
+   ═══════════════════════════════════════════════════════════════════════ */
+function showTooltip(ev, d){
+  const isWarn  = d.decade === 1940;
+  const partial = d.partial;
+
+  tooltip.innerHTML = `
+    <div class="tt-h">
+      <span>${d.decade}s</span>
+      <span class="tt-n">n = ${fmtNum(d.n)}</span>
+    </div>
+    <div class="tt-r hi"><span class="k">均值 mean</span><span class="v">${fmt4(d.mean)}</span></div>
+    <div class="tt-r"><span class="k">标准差 σ</span><span class="v">${fmt4(d.sd)}</span></div>
+    <div class="tt-r"><span class="k">中位数</span><span class="v">${fmt4(d.median)}</span></div>
+    <div class="tt-r ${isWarn ? 'warn' : ''}">
+      <span class="k">IQR (p25–p75)</span>
+      <span class="v">${d.p25.toFixed(3)} – ${d.p75.toFixed(3)}</span>
+    </div>
+    ${isWarn ? `<div class="tt-note">⚠ 均值落在 IQR 之外 —— 分布右偏</div>` : ''}
+    ${partial ? `<div class="tt-note">◌ 残缺十年，样本量不足其他十年的 1/9</div>` : ''}
+  `;
+
+  tooltip.classList.add('on');
+
+  // 定位：优先放在光标右侧；靠近右/下边缘时自动翻转，避免溢出视口
+  const pad = 16;
+  const tw  = tooltip.offsetWidth;
+  const th  = tooltip.offsetHeight;
+
+  let left = ev.clientX + pad;
+  let top  = ev.clientY - th / 2;
+
+  if (left + tw > window.innerWidth - 8)  left = ev.clientX - tw - pad;
+  // ⚠️ 翻到光标左侧后仍可能为负（窄屏 + 光标偏右时）：必须再夹一次，
+  //    否则整块 Tooltip 会跑到屏幕外，内容完全看不见。
+  left = Math.max(8, Math.min(left, window.innerWidth - tw - 8));
+  if (top  < 8)                           top  = 8;
+  if (top + th > window.innerHeight - 8)  top  = window.innerHeight - th - 8;
+
+  tooltip.style.left = left + 'px';
+  tooltip.style.top  = top + 'px';
+}
+
+function hideTooltip(){
+  tooltip.classList.remove('on');
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   6. 图表 2 · 双轨分岔（消费 track_type_dispersion，22 行）
+   ═══════════════════════════════════════════════════════════════════════
+   与图 1 的三点视觉/结构约定：
+     · y 轴同样锁死 [0, 1] —— 两图可直接垂直对照
+     · 沿用同一套 scalePoint / curveMonotoneX / 网格 / 轴样式
+     · 沿用 settleAll 式 rAF 节流兜底，杜绝「画一半」
+   ═══════════════════════════════════════════════════════════════════════ */
+const mesoEl      = document.getElementById('chart-meso');
+const mesoShapeEl = document.getElementById('chart-meso-shape');
+const anno1970    = document.getElementById('anno-1970');
+
+let playedIntroMeso = false;
+
+/* 点半径按样本量对数编码。
+   映射：n = 20 → 2.0px；n = 20,000 → 6.0px。
+   这样 2020s 器乐（n = 28）会自动缩成一个很小的点 ——
+   无需额外判断，样本量的不可靠会被视觉直接表达出来。 */
+function radiusOfN(n){
+  const LO = Math.log10(20), HI = Math.log10(20000);
+  const t  = (Math.log10(Math.max(n, 1)) - LO) / (HI - LO);
+  return 2 + 4 * CFG.clamp(t, 0, 1);
+}
+
+/* ── 主图：双线 + IQR 带 ────────────────────────────────────────────── */
+function renderMeso(){
+  const W = mesoEl.clientWidth;
+  if (!W) return;
+
+  const isIntro = !playedIntroMeso;
+
+  /* 6.1 尺寸与边距。top 需容纳 1970s 浮层注释（约 78px）+ 色带顶部 */
+  const H = W < 560 ? 400 : (W < 900 ? 420 : 480);
+  const M = {
+    top   : W < 560 ? 150 : 118,
+    right : W < 560 ? 20  : 44,
+    bottom: W < 620 ? 74  : 56,
+    left  : W < 560 ? 44  : 60
+  };
+  const iw = Math.max(10, W - M.left - M.right);
+  const ih = Math.max(10, H - M.top - M.bottom);
+
+  /* 6.2 比例尺 —— 与图 1 完全一致（离散类别用 scalePoint，y 锁 [0,1]） */
+  const x = d3.scalePoint()
+      .domain(TTD_DECADES)
+      .range([0, iw])
+      .padding(0.55);
+
+  const y = d3.scaleLinear()
+      .domain(CFG.yDomain)
+      .range([ih, 0]);
+
+  /* 6.3 路径生成器。
+     ⚠️ IQR 带用 p25/p75 而非 mean±1σ —— 因为器乐的分布是双峰，
+        sd 会被两端的极端值撑大，画出的带子会糊成一片。
+        四分位带只描述「中间 50% 在哪」，对双峰形态更诚实。
+     ⚠️ 与图 1 同理：band 不设 stroke。area 路径首尾闭合，
+        加描边会在左右两端各出现一条竖直「封口线」，看着像数据被切断。 */
+
+  // 完整 11 点（用于最后两点之外的实线部分）
+  const instLine = d3.line().x(d => x(d.decade)).y(d => y(d.mean)).curve(d3.curveMonotoneX);
+  const vocLine  = d3.line().x(d => x(d.decade)).y(d => y(d.mean)).curve(d3.curveMonotoneX);
+
+  const instPts = TTD_PAIRS.map(p => p.inst);
+  const vocPts  = TTD_PAIRS.map(p => p.voc);
+
+  /* 器乐末端（2010s → 2020s）单独成段：n = 28 不可用，改画虚线 */
+  const instTailPts = instPts.slice(-2);
+
+  /* IQR 带路径；s 为「张开系数」（0 = 退化成均值线，1 = 完整 IQR）。
+     入场动画就是让 s 从 0 走到 1 —— 色带视觉上「从线里长出来」。 */
+  function bandPath(key, s){
+    return d3.area()
+      .x(d => x(d.decade))
+      .y0(d => y(d.mean - Math.abs(d.mean - d.p25) * s))
+      .y1(d => y(d.mean + Math.abs(d.p75 - d.mean) * s))
+      .curve(d3.curveMonotoneX)(TTD_PAIRS.map(p => p[key]));
+  }
+
+  /* 6.4 建立 SVG 骨架 */
+  const loadingEl = document.getElementById('meso-loading');
+  if (loadingEl) loadingEl.remove();
+
+  d3.select(mesoEl).selectAll('svg').remove();
+
+  const svg = d3.select(mesoEl)
+      .append('svg')
+      .attr('width', W)
+      .attr('height', H)
+      .attr('viewBox', `0 0 ${W} ${H}`)
+      .attr('role', 'img')
+      .attr('aria-label',
+            '折线图：1920s 至 2020s 器乐曲与人声曲的原声度均值及四分位带；' +
+            '两条线在 1970s 前平行下降，之后器乐停止下降、人声继续走低，且离散度在 1970s 交叉');
+
+  const g = svg.append('g').attr('transform', `translate(${M.left},${M.top})`);
+
+  /* 6.5 网格（6 档，与图 1 相同） */
+  g.append('g')
+      .attr('class', 'grid')
+      .selectAll('line')
+      .data(y.ticks(5))
+      .join('line')
+      .attr('x1', 0).attr('x2', iw)
+      .attr('y1', d => y(d)).attr('y2', d => y(d));
+
+  /* 6.6 坐标轴 */
+  const smallScreen = W < 620;
+
+  g.append('g')
+      .attr('class', 'axis y-axis')
+      .call(d3.axisLeft(y).ticks(5).tickSize(0).tickPadding(9)
+              .tickFormat(d => d.toFixed(1)));
+
+  g.append('g')
+      .attr('class', 'axis x-axis')
+      .attr('transform', `translate(0,${ih})`)
+      .call(d3.axisBottom(x).tickSize(0).tickPadding(11)
+              .tickFormat(d => d + 's'))
+      .selectAll('text')
+        .attr('text-anchor', smallScreen ? 'end' : 'middle')
+        .attr('transform', smallScreen ? 'rotate(-45)' : null)
+        .attr('dx',       smallScreen ? '-0.4em' : null)
+        .attr('dy',       smallScreen ? '0.1em' : null);
+
+  g.append('text').attr('class', 'y-label')
+      .attr('transform', 'rotate(-90)')
+      .attr('x', -ih / 2).attr('y', -M.left + 14)
+      .attr('text-anchor', 'middle')
+      .text('ACOUSTICNESS');
+
+  g.append('text').attr('class', 'x-label')
+      .attr('x', iw / 2).attr('y', ih + (smallScreen ? 68 : 48))
+      .attr('text-anchor', 'middle')
+      .text('DECADE');
+
+  /* 6.7 绘制顺序：IQR 带 → 均值线 → 1970s 参考线 → 数据点 */
+
+  // (a) 两条 IQR 带（opacity .18，无描边）
+  const instBand = g.append('path')
+      .datum(TTD_PAIRS)
+      .attr('d', bandPath('inst', isIntro ? 0 : 1))
+      .attr('fill', '#BF5AF2').attr('fill-opacity', .18)
+      .attr('stroke', 'none');
+
+  const vocBand = g.append('path')
+      .datum(TTD_PAIRS)
+      .attr('d', bandPath('voc', isIntro ? 0 : 1))
+      .attr('fill', '#5AC8FA').attr('fill-opacity', .18)
+      .attr('stroke', 'none');
+
+  // (b) 人声主线（全程实线 —— 2020s 的 n = 2,002 仍在可用量级）
+  const vocPath = g.append('path')
+      .datum(vocPts)
+      .attr('d', vocLine)
+      .attr('fill', 'none')
+      .attr('stroke', '#5AC8FA')
+      .attr('stroke-width', 2.4)
+      .attr('stroke-linecap', 'round')
+      .attr('stroke-linejoin', 'round');
+
+  // (c) 器乐主线：1920s–2010s 实线
+  const instPath = g.append('path')
+      .datum(instPts.slice(0, -1))
+      .attr('d', instLine)
+      .attr('fill', 'none')
+      .attr('stroke', '#BF5AF2')
+      .attr('stroke-width', 2.4)
+      .attr('stroke-linecap', 'round')
+      .attr('stroke-linejoin', 'round');
+
+  // (d) 器乐末端虚线（2010s → 2020s）—— 降级第 1 层
+  const instTail = g.append('path')
+      .datum(instTailPts)
+      .attr('d', instLine)
+      .attr('fill', 'none')
+      .attr('stroke', '#BF5AF2')
+      .attr('stroke-width', 2.4)
+      .attr('stroke-dasharray', '4 4')
+      .attr('stroke-linecap', 'round')
+      .attr('opacity', isIntro ? 0 : 1);
+
+  /* (e) 1970s 分岔参考线。
+     用淡青灰而非纯灰：它同时承载三个含义（共同低点 / Gap 最小点 / IQR 交叉点），
+     是整张图最重要的叙事锚点，值得比图 1 的 1960s 线更亮一些。 */
+  const ref1970 = g.append('line')
+      .attr('x1', x(1970)).attr('x2', x(1970))
+      .attr('y1', 0).attr('y2', ih)
+      .attr('stroke', '#BF5AF2')
+      .attr('stroke-width', 1)
+      .attr('stroke-dasharray', '3 5')
+      .attr('stroke-opacity', isIntro ? 0 : .5);
+
+  g.append('text')
+      .attr('class', 'x-label')
+      .attr('x', x(1970) + 8)
+      .attr('y', ih - 10)
+      .attr('fill', '#BF5AF2')
+      .attr('fill-opacity', .8)
+      .text('1970s IQR 交叉');
+
+  // (f) 数据点：两轨各自成组，半径按 n 编码
+  const ptsInst = g.append('g').attr('class', 'pts-inst')
+      .selectAll('circle')
+      .data(instPts)
+      .join('circle')
+      .attr('cx', d => x(d.decade))
+      .attr('cy', d => y(d.mean))
+      .attr('r', d => radiusOfN(d.n))
+      .attr('fill', '#121212')
+      .attr('stroke', '#BF5AF2')
+      .attr('stroke-width', 2)
+      .attr('opacity', isIntro ? 0 : 1);
+
+  const ptsVoc = g.append('g').attr('class', 'pts-voc')
+      .selectAll('circle')
+      .data(vocPts)
+      .join('circle')
+      .attr('cx', d => x(d.decade))
+      .attr('cy', d => y(d.mean))
+      .attr('r', d => radiusOfN(d.n))
+      .attr('fill', '#121212')
+      .attr('stroke', '#5AC8FA')
+      .attr('stroke-width', 2)
+      .attr('opacity', isIntro ? 0 : 1);
+
+  /* 2020s 器乐额外加一圈警示环 —— 降级第 2 层（空心 + 小半径已由通用样式完成） */
+  const d20i = instPts[instPts.length - 1];
+  const warn20 = g.append('circle')
+      .attr('cx', x(d20i.decade)).attr('cy', y(d20i.mean))
+      .attr('r', radiusOfN(d20i.n) + 5)
+      .attr('fill', 'none')
+      .attr('stroke', '#FF9F0A')
+      .attr('stroke-width', 1.2)
+      .attr('stroke-dasharray', '2 2')
+      .attr('stroke-opacity', isIntro ? 0 : .65);
+
+  /* 6.8 1970s 浮层注释定位（读实测高度，与图 1 同法） */
+  const annoHalf = (W < 640 ? 86 : 100) + 4;
+  anno1970.style.left = CFG.clamp(x(1970) + M.left, annoHalf, W - annoHalf) + 'px';
+  anno1970.style.top  = '6px';
+  if (isIntro) anno1970.classList.add('reveal-2');
+
+  /* 6.9 Hover 交互层：整块透明 overlay 按 x 找最近年代，
+        一次高亮两轨并弹出合并 Tooltip（含实时 Gap）。 */
+  const hLine = g.append('line')
+      .attr('y1', 0).attr('y2', ih)
+      .attr('stroke', '#9aa0a6').attr('stroke-opacity', 0)
+      .attr('stroke-width', 1).attr('stroke-dasharray', '3 4')
+      .style('pointer-events', 'none');
+
+  const ringI = g.append('circle').attr('fill', 'none')
+      .attr('stroke', '#BF5AF2').attr('stroke-width', 2).attr('opacity', 0)
+      .style('pointer-events', 'none');
+  const ringV = g.append('circle').attr('fill', 'none')
+      .attr('stroke', '#5AC8FA').attr('stroke-width', 2).attr('opacity', 0)
+      .style('pointer-events', 'none');
+
+  function nearestPair(mx){
+    let best = TTD_PAIRS[0], bestD = Infinity;
+    TTD_PAIRS.forEach(p => {
+      const dist = Math.abs(x(p.decade) - mx);
+      if (dist < bestD){ bestD = dist; best = p; }
+    });
+    return best;
+  }
+
+  g.append('rect')
+      .attr('class', 'overlay')
+      .attr('x', -M.left / 2).attr('y', -M.top / 2)
+      .attr('width', iw + M.left).attr('height', ih + M.top + M.bottom / 2)
+      .attr('fill', 'transparent')
+      .style('cursor', 'crosshair')
+      .on('mousemove', function(ev){
+        // ⚠️ 同上：g 是 selection，必须 g.node()。
+        //    传 selection 会让 d3.pointer 退化成 [pageX, pageY]（绝对屏幕坐标），
+        //    与 x() 的 [0, iw] 值域不同坐标系 —— 命中年代整体右移，右端永远落到 2020s。
+        const [mx] = d3.pointer(ev, g.node());
+        const p = nearestPair(mx);
+
+        hLine.attr('x1', x(p.decade)).attr('x2', x(p.decade)).attr('stroke-opacity', .35);
+        ringI.attr('cx', x(p.decade)).attr('cy', y(p.inst.mean))
+             .attr('r', radiusOfN(p.inst.n) + 6).attr('opacity', .9);
+        ringV.attr('cx', x(p.decade)).attr('cy', y(p.voc.mean))
+             .attr('r', radiusOfN(p.voc.n) + 6).attr('opacity', .9);
+
+        showTipMeso(ev, p);
+      })
+      .on('mouseleave', function(){
+        hLine.attr('stroke-opacity', 0);
+        ringI.attr('opacity', 0);
+        ringV.attr('opacity', 0);
+        hideTooltip();
+      });
+
+  /* 6.10 入场动画 + rAF 节流兜底
+     ⚠️ 与图 1 完全同源的健壮性设计：d3.transition 由 rAF 驱动，
+        切标签页 / 休眠 / 后台节流会让 on('end') 永不触发。
+        故挂 setTimeout 硬兜底，并先 interrupt() 再写终态 ——
+        只写属性不够，被冻结的 transition 会在 rAF 恢复后用中间值覆盖回来。 */
+  const settleMeso = () => {
+    [instBand, vocBand, vocPath, instPath, instTail, ref1970, warn20, hLine]
+      .forEach(sel => sel.interrupt());
+    ptsInst.interrupt();
+    ptsVoc.interrupt();
+
+    instBand.attr('d', bandPath('inst', 1)).attr('opacity', 1);
+    vocBand.attr('d', bandPath('voc', 1)).attr('opacity', 1);
+    vocPath.attr('stroke-dasharray', null).attr('stroke-dashoffset', null).attr('opacity', 1);
+    instPath.attr('stroke-dasharray', null).attr('stroke-dashoffset', null).attr('opacity', 1);
+    instTail.attr('opacity', 1);
+    ptsInst.attr('opacity', 1);
+    ptsVoc.attr('opacity', 1);
+    ref1970.attr('stroke-opacity', .5);
+    warn20.attr('stroke-opacity', .65);
+
+    // CSS animation 优先级高于 inline style，纠正只能移除动画类
+    anno1970.classList.remove('reveal-2');
+  };
+
+  const reduceMotion =
+    window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  if (isIntro && !reduceMotion){
+    playedIntroMeso = true;
+
+    // (1) IQR 带从均值线「张开」到完整区间
+    const spreadTween = (sel, key) => sel
+      .transition().duration(880).ease(d3.easeCubicOut)
+      .tween('spread', function(){
+        const it = d3.interpolateNumber(0, 1);
+        const el = d3.select(this);
+        return t => el.attr('d', bandPath(key, it(t)));
+      });
+
+    spreadTween(instBand, 'inst');
+    spreadTween(vocBand, 'voc');
+
+    // (2) 两条主线自左向右「生长」
+    [ [vocPath, vocPts], [instPath, instPts.slice(0, -1)] ].forEach(([sel, data], k) => {
+      const len = sel.node().getTotalLength();
+      sel.attr('stroke-dasharray', `${len} ${len}`)
+         .attr('stroke-dashoffset', len)
+         .transition().delay(140 + k * 90).duration(CFG.animMs).ease(d3.easeCubicOut)
+         .attr('stroke-dashoffset', 0)
+         .on('end', function(){ d3.select(this).attr('stroke-dasharray', null); });
+    });
+
+    // (3) 数据点逐 decade 弹出（两轨同拍，强调「同一年的两条轨」）
+    const ptDelay = (d, i) => 520 + i * 62;
+    ptsInst.transition().delay(ptDelay).duration(330).ease(d3.easeBackOut).attr('opacity', 1);
+    ptsVoc .transition().delay(ptDelay).duration(330).ease(d3.easeBackOut).attr('opacity', 1);
+
+    // (4) 参考线 + 末端虚线 + 警示环
+    ref1970.transition().delay(1180).duration(460).attr('stroke-opacity', .5);
+    instTail.transition().delay(1240).duration(420).attr('opacity', 1);
+    warn20  .transition().delay(1320).duration(420).attr('stroke-opacity', .65);
+
+    setTimeout(settleMeso, CFG.animMs + 1100);
+  } else {
+    playedIntroMeso = true;
+    settleMeso();
+  }
+}
+
+/* ── 副图：三段占比 100% 堆叠条 ─────────────────────────────────────────
+   为什么用堆叠条而不是再画一条折线：
+   折线是派生统计量，读者要理解「IQR 是什么」才能读懂；
+   堆叠条直接把「分布本身」摊开 —— 中间那段越窄，越像两个极端。
+   器乐条会显现出「实心—空洞—实心」的三段分离，人声条则是「大实心 + 大空洞 + 细实心」。 */
+function renderMesoShape(){
+  const W = mesoShapeEl.clientWidth;
+  if (!W) return;
+
+  const BH = W < 560 ? 7 : 8;        // 单条高度
+  const GIN = 2;                     // 同一年代内两轨的间距
+  const GGRP = W < 560 ? 7 : 10;     // 年代之间的间距
+  const M = { top: 20, right: W < 560 ? 12 : 20, bottom: 30, left: W < 560 ? 66 : 80 };
+
+  const nGrp = TTD_PAIRS.length;
+  const ih = nGrp * (2 * BH + GIN) + (nGrp - 1) * GGRP;
+  const H  = M.top + ih + M.bottom;
+  const iw = Math.max(10, W - M.left - M.right);
+
+  const x = d3.scaleLinear().domain([0, 100]).range([0, iw]);
+
+  d3.select(mesoShapeEl).selectAll('svg').remove();
+
+  const svg = d3.select(mesoShapeEl)
+      .append('svg')
+      .attr('width', W).attr('height', H)
+      .attr('viewBox', `0 0 ${W} ${H}`)
+      .attr('role', 'img')
+      .attr('aria-label',
+            '百分比堆叠条：每个年代分器乐与人声两行，展示原声度低尾、中段、高尾三段的占比。' +
+            '中段越窄说明分布越接近两个极端；器乐在 1970s 之后中段被掏空成两段，人声则始终为单峰');
+
+  const g = svg.append('g').attr('transform', `translate(${M.left},${M.top})`);
+
+  /* 三段颜色：同色系明度阶梯。中段刻意接近面板底色（#181818）——
+     它不是「一种数据」，而是「数据缺席的地方」。 */
+  const SEG = [
+    { key: 'lo',  fill: '#7A7A85', name: '低尾' },
+    { key: 'mid', fill: '#242429', name: '中段' },
+    { key: 'hi',  fill: '#C5C5CC', name: '高尾' }
+  ];
+
+  /* x 轴刻度（0–100%） */
+  g.append('g')
+      .attr('class', 'grid')
+      .selectAll('line')
+      .data([0, 25, 50, 75, 100])
+      .join('line')
+      .attr('x1', d => x(d)).attr('x2', d => x(d))
+      .attr('y1', -M.top + 4).attr('y2', ih + 6);
+
+  const axisY = ih + 18;
+
+  g.append('g').attr('class', 'axis').attr('transform', `translate(0,${axisY})`)
+      .call(d3.axisBottom(x).ticks(5).tickSize(0).tickPadding(7)
+              .tickFormat(d => d + '%'));
+
+  /* 逐年代画一个「组」：器乐条在上、人声条在下，共用同一 x 标尺 */
+  TTD_PAIRS.forEach((p, gi) => {
+    const y0 = gi * (2 * BH + GIN + GGRP);
+    const rows = [ { d: p.inst, y: y0, color: '#BF5AF2' },
+                   { d: p.voc,  y: y0 + BH + GIN, color: '#5AC8FA' } ];
+
+    // 年代标签（组内垂直居中）
+    g.append('text')
+      .attr('class', 'x-label')
+      .attr('x', -12)
+      .attr('y', y0 + BH + GIN / 2)
+      .attr('text-anchor', 'end')
+      .attr('dominant-baseline', 'central')
+      .attr('fill', gi === 5 ? '#BF5AF2' : '#6a7076')
+      .attr('font-weight', gi === 5 ? 700 : 400)
+      .text(p.decade + 's');
+
+    rows.forEach(rw => {
+      // 轨道色标（左侧小方块）
+      g.append('rect')
+        .attr('x', -8).attr('y', rw.y + BH / 2 - 2.5)
+        .attr('width', 5).attr('height', 5).attr('rx', 1)
+        .attr('fill', rw.color);
+
+      // 三段
+      let acc = 0;
+      SEG.forEach(sg => {
+        const v = rw.d[sg.key];
+        g.append('rect')
+          .attr('x', x(acc)).attr('y', rw.y)
+          .attr('width', Math.max(0, x(acc + v) - x(acc)))
+          .attr('height', BH)
+          .attr('fill', sg.fill)
+          .attr('stroke', '#181818')     // 让段边界在任何底色上都清晰
+          .attr('stroke-width', .8);
+        acc += v;
+      });
+
+      // 中段 < 28% 时在条上打一个「空洞」标记，强化「被掏空」的读感
+      const midW = rw.d.mid;
+      if (midW < 28 && (x(rw.d.lo + midW) - x(rw.d.lo)) > 10) {
+        const cx = (x(rw.d.lo) + x(rw.d.lo + midW)) / 2;
+        g.append('text')
+          .attr('x', cx).attr('y', rw.y + BH / 2)
+          .attr('text-anchor', 'middle').attr('dominant-baseline', 'central')
+          .attr('fill', '#6a7076').attr('font-size', 8.5)
+          .text(midW.toFixed(0) + '%');
+      }
+    });
+
+    // Hover：整组命中，显示该年两条轨的完整 Tooltip
+    g.append('rect')
+      .attr('x', -M.left + 4).attr('y', y0 - GGRP / 2)
+      .attr('width', iw + M.left - 8).attr('height', 2 * BH + GIN + GGRP)
+      .attr('fill', 'transparent')
+      .style('cursor', 'crosshair')
+      .on('mousemove', ev => showTipMeso(ev, p, true))
+      .on('mouseleave', hideTooltip);
+  });
+}
+
+/* ── 双轨合并 Tooltip（含实时计算的 Gap） ───────────────────────────── */
+function showTipMeso(ev, p, fromShape){
+  const i = p.inst, v = p.voc;
+  const gap = i.mean - v.mean;
+  const tiny = i.n < TTD_TINY_N;
+  const isCross = p.decade === 1970;
+  const partial = p.decade === 2020;
+
+  // Gap 的极值标注：让「1970s 最小 / 2000s 最大」自己在 Tooltip 里说话
+  let gapTag = '';
+  if (isCross) gapTag = ' ← 全表最小';
+  else if (p.decade === 2000) gapTag = ' ← 全表最大';
+
+  const row = (d, color, label) => `
+    <div class="tt-track">
+      <span class="sw" style="background:${color}"></span>
+      <span class="nm">${label}</span>
+      <span class="nn">n = ${fmtNum(d.n)}</span>
+    </div>
+    <div class="tt-r"><span class="k">均值 mean</span><span class="v">${fmt4(d.mean)}</span></div>
+    <div class="tt-mini">
+      <span>IQR ${d.p25.toFixed(3)} – ${d.p75.toFixed(3)}</span>
+      <span>中位 ${d.med.toFixed(3)}</span>
+    </div>
+    <div class="tt-mini">
+      <span>低尾 ${d.lo.toFixed(1)}%</span>
+      <span>中段 ${d.mid.toFixed(1)}%</span>
+      <span>高尾 ${d.hi.toFixed(1)}%</span>
+    </div>`;
+
+  tooltip.innerHTML = `
+    <div class="tt-h">
+      <span>${p.decade}s</span>
+      <span class="tt-n">${fromShape ? '分布形态' : '两轨对照'}</span>
+    </div>
+    ${row(i, '#BF5AF2', '器乐')}
+    <div class="tt-sep"></div>
+    ${row(v, '#5AC8FA', '人声')}
+    <div class="tt-sep"></div>
+    <div class="tt-r gap"><span class="k">Gap（器乐 − 人声）</span>
+      <span class="v">${gap >= 0 ? '+' : '−'}${Math.abs(gap).toFixed(4)}${gapTag}</span></div>
+    ${tiny ? `<div class="tt-note">⚠ 器乐仅 ${i.n} 首样本，95% 置信区间 [0.316, 0.653]
+              （t 分布，df=27）完全覆盖 2010s 的 0.4582 —— <b>不可解读为回升</b></div>` : ''}
+    ${partial ? `<div class="tt-note">◌ 2020s 为残缺十年（该十年共 2,030 首，人声 ${fmtNum(v.n)} 首）</div>` : ''}
+    ${isCross ? `<div class="tt-note">◆ 器乐 IQR ${(i.p75 - i.p25).toFixed(3)} 首次超过人声
+              ${(v.p75 - v.p25).toFixed(3)} —— 离散度在此交叉</div>` : ''}
+    ${(!isCross && !tiny && !partial) ? `<div class="tt-note">器乐 IQR ${(i.p75-i.p25).toFixed(3)} ·
+              人声 IQR ${(v.p75-v.p25).toFixed(3)}</div>` : ''}
+  `;
+
+  tooltip.classList.add('on');
+
+  const pad = 16;
+  const tw  = tooltip.offsetWidth;
+  const th  = tooltip.offsetHeight;
+  let left = ev.clientX + pad;
+  let top  = ev.clientY - th / 2;
+
+  if (left + tw > window.innerWidth - 8)  left = ev.clientX - tw - pad;
+  // ⚠️ 翻到光标左侧后仍可能为负（窄屏 + 光标偏右时）：必须再夹一次，
+  //    否则整块 Tooltip 会跑到屏幕外，内容完全看不见。
+  left = Math.max(8, Math.min(left, window.innerWidth - tw - 8));
+  if (top  < 8)                           top  = 8;
+  if (top + th > window.innerHeight - 8)  top  = window.innerHeight - th - 8;
+
+  tooltip.style.left = left + 'px';
+  tooltip.style.top  = top + 'px';
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   4. 图表 3 · song_version_study_clean（天然实验：同一首歌 × 不同年代）
+      - 主图：10 首曲目的小多图（严格共享 Y 轴 [0,1] + 贯穿的 1980s 参考线）
+      - 副图：Silent Night 单曲深潜（44 条版本记录 + 视图的十年均值）
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* ══ Phase 3 数据块 —— 程序生成，禁止手改 ═══════════════════════
+   来源：锁定视图 song_version_study_clean（81 行 / 16 列）
+   生成方式：.venv/Scripts/python.exe 从 spotify.duckdb 直读导出，逐值比对通过
+   数值一律由 SQL 层 round(x,4) 交付，前端不再二次舍入
+   thin = (n_versions <= 2)，取自视图的 thin_cell 列，非前端推断
+   单元字段：dec 十年 / n 版本数 / mean 均值 / lo·hi 格内极值 /
+            loA·hiA 极值艺人 / y0·y1 真实年份区间 / thin 薄格子标记
+   ═══════════════════════════════════════════════════════════════ */
+const SVC_SONGS = [
+  { key: 'white christmas', label: 'White Christmas', vtot: 71, nd: 8, cells: [
+    { dec: 1940, n: 11, mean: 0.7745, lo: 0.2130, hi: 0.9780, loA: 'Cade Walker', hiA: 'Tony Bennett', y0: 1942, y1: 1949, thin: false },
+    { dec: 1950, n: 19, mean: 0.8719, lo: 0.6430, hi: 0.9940, loA: 'Mantovani', hiA: 'Urbie Green', y0: 1951, y1: 1959, thin: false },
+    { dec: 1960, n: 21, mean: 0.7816, lo: 0.0556, hi: 0.9680, loA: 'The Ventures', hiA: 'Chet Atkins', y0: 1960, y1: 1968, thin: false },
+    { dec: 1970, n: 3, mean: 0.5783, lo: 0.3820, hi: 0.9330, loA: 'The Temptations', hiA: 'Willie Nelson', y0: 1970, y1: 1979, thin: false },
+    { dec: 1980, n: 5, mean: 0.6114, lo: 0.0218, hi: 0.9820, loA: 'Kenny Rogers', hiA: 'Dolly Parton', y0: 1981, y1: 1986, thin: false },
+    { dec: 1990, n: 6, mean: 0.8053, lo: 0.1650, hi: 0.9820, loA: 'The Drifters', hiA: 'Charlie Parker', y0: 1990, y1: 1996, thin: false },
+    { dec: 2000, n: 2, mean: 0.7050, lo: 0.5870, hi: 0.8230, loA: 'Taylor Swift', hiA: 'Bright Eyes', y0: 2002, y1: 2008, thin: true },
+    { dec: 2010, n: 4, mean: 0.6808, lo: 0.5500, hi: 0.7700, loA: 'Michael Bublé', hiA: 'Frank Sinatra', y0: 2011, y1: 2013, thin: false }
+  ] },
+  { key: 'winter wonderland', label: 'Winter Wonderland', vtot: 63, nd: 9, cells: [
+    { dec: 1930, n: 5, mean: 0.6726, lo: 0.0069, hi: 0.9620, loA: 'Honeytraps', hiA: 'Jeff Henry', y0: 1934, y1: 1936, thin: false },
+    { dec: 1940, n: 5, mean: 0.8006, lo: 0.5630, hi: 0.9840, loA: 'Collin Raye', hiA: 'Rosemary Clooney', y0: 1943, y1: 1949, thin: false },
+    { dec: 1950, n: 12, mean: 0.8221, lo: 0.5400, hi: 0.9780, loA: 'Johnny Mathis', hiA: 'Fred Waring', y0: 1951, y1: 1959, thin: false },
+    { dec: 1960, n: 16, mean: 0.7670, lo: 0.0498, hi: 0.9710, loA: 'Booker T. & the M.G.\'s', hiA: 'Doris Day', y0: 1960, y1: 1968, thin: false },
+    { dec: 1970, n: 2, mean: 0.6235, lo: 0.4090, hi: 0.8380, loA: 'Elvis Presley', hiA: 'The Partridge Family', y0: 1971, y1: 1971, thin: true },
+    { dec: 1980, n: 8, mean: 0.5458, lo: 0.1520, hi: 0.9720, loA: 'Randy Travis', hiA: 'Harry Connick', y0: 1986, y1: 1989, thin: false },
+    { dec: 1990, n: 5, mean: 0.7620, lo: 0.5470, hi: 0.9420, loA: 'Kenny G', hiA: 'Frank Sinatra', y0: 1990, y1: 1994, thin: false },
+    { dec: 2000, n: 3, mean: 0.6767, lo: 0.4530, hi: 0.8530, loA: 'Brad Paisley', hiA: 'Denis Solee', y0: 2002, y1: 2006, thin: false },
+    { dec: 2010, n: 7, mean: 0.5960, lo: 0.1330, hi: 0.7960, loA: 'Blake Shelton', hiA: 'Hannah Kerr', y0: 2011, y1: 2018, thin: false }
+  ] },
+  { key: 'jingle bells', label: 'Jingle Bells', vtot: 53, nd: 9, cells: [
+    { dec: 1930, n: 3, mean: 0.7913, lo: 0.5460, hi: 0.9230, loA: 'Duke Ellington', hiA: 'Benny Goodman', y0: 1932, y1: 1936, thin: false },
+    { dec: 1940, n: 4, mean: 0.6982, lo: 0.5690, hi: 0.7590, loA: 'Duke Ellington', hiA: 'Mitch Miller & The Gang', y0: 1941, y1: 1949, thin: false },
+    { dec: 1950, n: 13, mean: 0.7578, lo: 0.3010, hi: 0.9560, loA: 'The Three Suns', hiA: 'The Voices Of Walter Schumann', y0: 1951, y1: 1959, thin: false },
+    { dec: 1960, n: 13, mean: 0.5679, lo: 0.0604, hi: 0.9420, loA: 'Booker T. & the M.G.\'s', hiA: 'Chet Atkins', y0: 1960, y1: 1969, thin: false },
+    { dec: 1970, n: 3, mean: 0.6103, lo: 0.4650, hi: 0.8830, loA: 'Smokey Robinson & The Miracles', hiA: 'Willie Nelson', y0: 1970, y1: 1979, thin: false },
+    { dec: 1980, n: 6, mean: 0.5018, lo: 0.2660, hi: 0.7420, loA: 'Carl Zittrer', hiA: 'Ray Conniff', y0: 1983, y1: 1988, thin: false },
+    { dec: 1990, n: 5, mean: 0.4366, lo: 0.0418, hi: 0.7420, loA: 'Bebe & Cece Winans', hiA: 'Ray Conniff', y0: 1990, y1: 1995, thin: false },
+    { dec: 2000, n: 4, mean: 0.4470, lo: 0.1540, hi: 0.7200, loA: 'Brian Setzer', hiA: 'Alan Jackson', y0: 2002, y1: 2006, thin: false },
+    { dec: 2010, n: 2, mean: 0.7250, lo: 0.6920, hi: 0.7580, loA: 'Beegie Adair', hiA: 'Frank Sinatra', y0: 2012, y1: 2017, thin: true }
+  ] },
+  { key: 'have yourself a merry little christmas', label: 'Have Yourself a merry little Christmas', vtot: 47, nd: 8, cells: [
+    { dec: 1940, n: 6, mean: 0.9168, lo: 0.8040, hi: 0.9700, loA: 'Frank Sinatra', hiA: 'Judy Garland', y0: 1944, y1: 1949, thin: false },
+    { dec: 1950, n: 2, mean: 0.7700, lo: 0.7040, hi: 0.8360, loA: 'Connie Francis', hiA: 'Jackie Gleason', y0: 1956, y1: 1959, thin: true },
+    { dec: 1960, n: 10, mean: 0.8948, lo: 0.7550, hi: 0.9610, loA: 'Andy Williams', hiA: 'Ella Fitzgerald', y0: 1960, y1: 1968, thin: false },
+    { dec: 1970, n: 3, mean: 0.8430, lo: 0.6580, hi: 0.9820, loA: 'The Jackson 5', hiA: 'John Denver', y0: 1970, y1: 1979, thin: false },
+    { dec: 1980, n: 2, mean: 0.6925, lo: 0.6660, hi: 0.7190, loA: 'The Pretenders', hiA: 'Carpenters', y0: 1984, y1: 1987, thin: true },
+    { dec: 1990, n: 6, mean: 0.8292, lo: 0.5140, hi: 0.9650, loA: 'Luther Vandross', hiA: 'Judy Garland', y0: 1992, y1: 1995, thin: false },
+    { dec: 2000, n: 4, mean: 0.7360, lo: 0.3740, hi: 0.8710, loA: 'Relient K', hiA: 'Christina Aguilera', y0: 2000, y1: 2009, thin: false },
+    { dec: 2010, n: 14, mean: 0.8128, lo: 0.1470, hi: 0.9940, loA: 'Pentatonix', hiA: 'Mila Crowell', y0: 2011, y1: 2018, thin: false }
+  ] },
+  { key: 'silent night', label: 'Silent Night', vtot: 44, nd: 8, cells: [
+    { dec: 1940, n: 3, mean: 0.9787, lo: 0.9670, hi: 0.9950, loA: 'Bastiaan Everink', hiA: 'Ken Elkinson', y0: 1941, y1: 1945, thin: false },
+    { dec: 1950, n: 10, mean: 0.9494, lo: 0.8260, hi: 0.9940, loA: 'Patti Page', hiA: 'Fred Waring', y0: 1951, y1: 1959, thin: false },
+    { dec: 1960, n: 10, mean: 0.9528, lo: 0.8630, hi: 0.9830, loA: 'Phil Spector', hiA: 'Chet Atkins', y0: 1961, y1: 1966, thin: false },
+    { dec: 1970, n: 4, mean: 0.7757, lo: 0.2150, hi: 0.9800, loA: 'The Temptations', hiA: 'The Johnny Cash Family', y0: 1970, y1: 1979, thin: false },
+    { dec: 1980, n: 6, mean: 0.6337, lo: 0.0914, hi: 0.9720, loA: 'Bon Jovi', hiA: 'Franz Xaver Gruber', y0: 1980, y1: 1989, thin: false },
+    { dec: 1990, n: 4, mean: 0.9140, lo: 0.8120, hi: 0.9720, loA: 'Mariah Carey', hiA: 'Kenny G', y0: 1991, y1: 1994, thin: false },
+    { dec: 2000, n: 3, mean: 0.8037, lo: 0.6210, hi: 0.9430, loA: 'Taylor Swift', hiA: 'Alan Jackson', y0: 2002, y1: 2008, thin: false },
+    { dec: 2010, n: 4, mean: 0.9523, lo: 0.9340, hi: 0.9590, loA: 'Pentatonix', hiA: 'Michael Bublé', y0: 2011, y1: 2015, thin: false }
+  ] },
+  { key: 'sleigh ride', label: 'Sleigh Ride', vtot: 34, nd: 8, cells: [
+    { dec: 1940, n: 1, mean: 0.7080, lo: 0.7080, hi: 0.7080, loA: 'Andy Williams', hiA: 'Andy Williams', y0: 1949, y1: 1949, thin: true },
+    { dec: 1950, n: 5, mean: 0.5565, lo: 0.0005, hi: 0.8900, loA: 'Arthur Lyman', hiA: 'Percy Faith & His Orchestra & Chorus', y0: 1953, y1: 1958, thin: false },
+    { dec: 1960, n: 9, mean: 0.6522, lo: 0.2960, hi: 0.9150, loA: 'The Ventures', hiA: 'Ramsey Lewis Trio', y0: 1960, y1: 1968, thin: false },
+    { dec: 1970, n: 2, mean: 0.7080, lo: 0.5450, hi: 0.8710, loA: 'The Partridge Family', hiA: 'Carpenters', y0: 1971, y1: 1978, thin: true },
+    { dec: 1980, n: 5, mean: 0.4896, lo: 0.0001, hi: 0.7870, loA: 'Alexander O\'Neal', hiA: 'Carpenters', y0: 1983, y1: 1988, thin: false },
+    { dec: 1990, n: 7, mean: 0.4356, lo: 0.0252, hi: 0.8490, loA: 'TLC', hiA: 'Harry Connick', y0: 1990, y1: 1998, thin: false },
+    { dec: 2000, n: 3, mean: 0.6813, lo: 0.3490, hi: 0.8990, loA: 'Relient K', hiA: 'Leroy Anderson', y0: 2000, y1: 2007, thin: false },
+    { dec: 2010, n: 2, mean: 0.3260, lo: 0.1930, hi: 0.4590, loA: 'Miley Cyrus', hiA: 'Pentatonix', y0: 2015, y1: 2017, thin: true }
+  ] },
+  { key: 'the christmas song', label: 'The Christmas Song', vtot: 34, nd: 8, cells: [
+    { dec: 1940, n: 4, mean: 0.9213, lo: 0.8660, hi: 0.9670, loA: 'Chet Atkins', hiA: 'Synne Madshus', y0: 1946, y1: 1949, thin: false },
+    { dec: 1950, n: 3, mean: 0.9630, lo: 0.9280, hi: 0.9910, loA: 'Patti Page', hiA: 'Urbie Green', y0: 1954, y1: 1955, thin: false },
+    { dec: 1960, n: 9, mean: 0.8911, lo: 0.6190, hi: 0.9940, loA: 'King Curtis', hiA: 'Vince Guaraldi', y0: 1960, y1: 1968, thin: false },
+    { dec: 1970, n: 3, mean: 0.5786, lo: 0.0698, hi: 0.9630, loA: 'The Temptations', hiA: 'Dexter Gordon', y0: 1970, y1: 1970, thin: false },
+    { dec: 1980, n: 4, mean: 0.6688, lo: 0.5490, hi: 0.8610, loA: 'The Temptations', hiA: 'Chet Atkins', y0: 1980, y1: 1989, thin: false },
+    { dec: 1990, n: 4, mean: 0.5958, lo: 0.2410, hi: 0.9850, loA: 'Boney James', hiA: 'Steve Erquiaga', y0: 1990, y1: 1996, thin: false },
+    { dec: 2000, n: 5, mean: 0.7257, lo: 0.0267, hi: 0.9850, loA: 'The Raveonettes', hiA: 'Steve Erquiaga', y0: 2003, y1: 2009, thin: false },
+    { dec: 2010, n: 2, mean: 0.9005, lo: 0.8720, hi: 0.9290, loA: 'Michael Bublé', hiA: 'Denis Solee', y0: 2012, y1: 2012, thin: true }
+  ] },
+  { key: 'santa claus is coming to town', label: 'Santa Claus is Coming to Town', vtot: 33, nd: 8, cells: [
+    { dec: 1930, n: 5, mean: 0.4155, lo: 0.0010, hi: 0.8610, loA: 'The Haywains', hiA: 'Lester Lanin', y0: 1934, y1: 1936, thin: false },
+    { dec: 1940, n: 3, mean: 0.6597, lo: 0.4990, hi: 0.7480, loA: 'Dolly Parton', hiA: 'Patti Page', y0: 1947, y1: 1949, thin: false },
+    { dec: 1950, n: 3, mean: 0.6440, lo: 0.3250, hi: 0.8090, loA: 'George Wright', hiA: 'Patti Page', y0: 1955, y1: 1959, thin: false },
+    { dec: 1960, n: 8, mean: 0.7510, lo: 0.4420, hi: 0.9470, loA: 'Booker T. & the M.G.\'s', hiA: 'Ramsey Lewis Trio', y0: 1960, y1: 1966, thin: false },
+    { dec: 1970, n: 2, mean: 0.2950, lo: 0.1660, hi: 0.4240, loA: 'The Partridge Family', hiA: 'The Jackson 5', y0: 1970, y1: 1971, thin: true },
+    { dec: 1980, n: 4, mean: 0.3296, lo: 0.0623, hi: 0.6150, loA: 'The Pointer Sisters', hiA: 'Frankie Valli & The Four Seasons', y0: 1983, y1: 1989, thin: false },
+    { dec: 1990, n: 3, mean: 0.4443, lo: 0.2990, hi: 0.5560, loA: 'Kidsongs', hiA: 'Frank Sinatra', y0: 1990, y1: 1993, thin: false },
+    { dec: 2010, n: 5, mean: 0.4604, lo: 0.0272, hi: 0.7860, loA: 'Justin Bieber', hiA: 'Michael Bublé', y0: 2011, y1: 2015, thin: false }
+  ] },
+  { key: 'silver bells', label: 'Silver Bells', vtot: 32, nd: 7, cells: [
+    { dec: 1950, n: 4, mean: 0.8423, lo: 0.6880, hi: 0.9360, loA: 'Ripley Cotton Choppers', hiA: 'Pat Boone', y0: 1953, y1: 1959, thin: false },
+    { dec: 1960, n: 14, mean: 0.7636, lo: 0.0049, hi: 0.9840, loA: 'The Ventures', hiA: 'Chet Atkins', y0: 1961, y1: 1966, thin: false },
+    { dec: 1970, n: 3, mean: 0.7860, lo: 0.5640, hi: 0.9040, loA: 'The Temptations', hiA: 'Elvis Presley', y0: 1970, y1: 1975, thin: false },
+    { dec: 1980, n: 3, mean: 0.8167, lo: 0.7760, hi: 0.8590, loA: 'Perry Como', hiA: 'Ray Conniff', y0: 1982, y1: 1988, thin: false },
+    { dec: 1990, n: 3, mean: 0.3290, lo: 0.0149, hi: 0.8320, loA: 'A Few Good Men', hiA: 'Ray Conniff', y0: 1990, y1: 1994, thin: false },
+    { dec: 2000, n: 3, mean: 0.6830, lo: 0.3840, hi: 0.9280, loA: 'Stevie Wonder', hiA: 'Kate Smith', y0: 2002, y1: 2004, thin: false },
+    { dec: 2010, n: 2, mean: 0.9030, lo: 0.8340, hi: 0.9720, loA: 'Tony Bennett', hiA: 'She & Him', y0: 2011, y1: 2011, thin: true }
+  ] },
+  { key: 'i\'ll be home for christmas', label: 'I\'ll Be Home for Christmas', vtot: 25, nd: 8, cells: [
+    { dec: 1940, n: 5, mean: 0.8242, lo: 0.2810, hi: 0.9710, loA: 'Bing Crosby', hiA: 'Bastiaan Everink', y0: 1943, y1: 1949, thin: false },
+    { dec: 1950, n: 4, mean: 0.8398, lo: 0.6360, hi: 0.9870, loA: 'Pat Boone', hiA: 'Elvis Presley', y0: 1956, y1: 1959, thin: false },
+    { dec: 1960, n: 6, mean: 0.8488, lo: 0.7900, hi: 0.9100, loA: 'Dean Martin', hiA: 'Doris Day', y0: 1963, y1: 1968, thin: false },
+    { dec: 1970, n: 1, mean: 0.9220, lo: 0.9220, hi: 0.9220, loA: 'Carpenters', hiA: 'Carpenters', y0: 1978, y1: 1978, thin: true },
+    { dec: 1980, n: 2, mean: 0.8465, lo: 0.7270, hi: 0.9660, loA: 'Carpenters', hiA: 'Debby Boone', y0: 1984, y1: 1989, thin: true },
+    { dec: 1990, n: 2, mean: 0.6735, lo: 0.4180, hi: 0.9290, loA: 'Dolly Parton', hiA: 'Amy Grant', y0: 1990, y1: 1992, thin: true },
+    { dec: 2000, n: 2, mean: 0.9225, lo: 0.9090, hi: 0.9360, loA: 'Rascal Flatts', hiA: 'Josh Groban', y0: 2007, y1: 2009, thin: true },
+    { dec: 2010, n: 3, mean: 0.9197, lo: 0.8870, hi: 0.9380, loA: 'She & Him', hiA: 'Michael Bublé', y0: 2011, y1: 2011, thin: false }
+  ] }
+];
+
+/* 池化十年均值 —— 小多图 Tooltip 里的「共识值」，也是 1980s 参考线的成立依据 */
+const SVC_POOLED = [
+  { dec: 1930, eq: 0.6265, wt: 0.6011, n: 13, k: 3 },
+  { dec: 1940, eq: 0.8091, wt: 0.8154, n: 42, k: 9 },
+  { dec: 1950, eq: 0.8017, wt: 0.8220, n: 75, k: 10 },
+  { dec: 1960, eq: 0.7871, wt: 0.7778, n: 116, k: 10 },
+  { dec: 1970, eq: 0.6721, wt: 0.6718, n: 26, k: 10 },
+  { dec: 1980, eq: 0.6136, wt: 0.5823, n: 45, k: 10 },
+  { dec: 1990, eq: 0.6225, wt: 0.6345, n: 45, k: 10 },
+  { dec: 2000, eq: 0.7090, wt: 0.6948, n: 29, k: 9 },
+  { dec: 2010, eq: 0.7276, wt: 0.7301, n: 45, k: 10 },
+];
+
+/* Silent Night 行级明细（44 条，1941–2015）—— 深潜副图散点
+   ⚠️ 本块是**视图粒度之外**的一次性行级导出，已在建库同轮与 spotify.duckdb
+      逐值核对通过；主图一律只消费锁定视图 song_version_study_clean。 */
+const SLN_RECORDS = [
+  { y: 1941, a: 'Ken Elkinson', ac: 0.9950 },
+  { y: 1943, a: 'Bastiaan Everink', ac: 0.9670 },
+  { y: 1945, a: 'Bing Crosby', ac: 0.9740 },
+  { y: 1951, a: 'The Voices Of Walter Schumann', ac: 0.9910 },
+  { y: 1952, a: 'Eddie Fisher', ac: 0.9130 },
+  { y: 1955, a: 'Fred Waring & The Pennsylvanians', ac: 0.9890 },
+  { y: 1955, a: 'Patti Page', ac: 0.8260 },
+  { y: 1956, a: 'Spike Jones', ac: 0.9860 },
+  { y: 1957, a: 'Elvis Presley', ac: 0.9600 },
+  { y: 1957, a: 'Gene Autry', ac: 0.9650 },
+  { y: 1958, a: 'Tennessee Ernie Ford', ac: 0.9930 },
+  { y: 1959, a: 'Fred Waring', ac: 0.9940 },
+  { y: 1959, a: 'Roger Williams', ac: 0.8770 },
+  { y: 1961, a: 'Chet Atkins', ac: 0.9830 },
+  { y: 1962, a: 'Bing Crosby', ac: 0.9640 },
+  { y: 1962, a: 'Harry Belafonte', ac: 0.9720 },
+  { y: 1962, a: 'Nat King Cole', ac: 0.9690 },
+  { y: 1962, a: 'The Staple Singers', ac: 0.9600 },
+  { y: 1963, a: 'Jim Reeves', ac: 0.9650 },
+  { y: 1963, a: 'Johnny Cash', ac: 0.9790 },
+  { y: 1963, a: 'Phil Spector', ac: 0.8630 },
+  { y: 1963, a: 'The Platters', ac: 0.9170 },
+  { y: 1966, a: 'Dean Martin', ac: 0.9560 },
+  { y: 1970, a: 'The Temptations', ac: 0.2150 },
+  { y: 1972, a: 'The Johnny Cash Family', ac: 0.9800 },
+  { y: 1978, a: 'Carpenters', ac: 0.9470 },
+  { y: 1979, a: 'John Denver', ac: 0.9610 },
+  { y: 1980, a: 'Franz Xaver Gruber', ac: 0.9720 },
+  { y: 1980, a: 'The Temptations', ac: 0.5450 },
+  { y: 1984, a: 'Carpenters', ac: 0.9270 },
+  { y: 1985, a: 'Bon Jovi', ac: 0.0914 },
+  { y: 1987, a: 'Stevie Nicks', ac: 0.5610 },
+  { y: 1989, a: 'Michael W. Smith', ac: 0.7060 },
+  { y: 1991, a: 'Sinéad O\'Connor', ac: 0.9480 },
+  { y: 1993, a: 'Boyz II Men', ac: 0.9240 },
+  { y: 1994, a: 'Kenny G', ac: 0.9720 },
+  { y: 1994, a: 'Mariah Carey', ac: 0.8120 },
+  { y: 2002, a: 'Alan Jackson', ac: 0.9430 },
+  { y: 2007, a: 'Josh Groban', ac: 0.8470 },
+  { y: 2008, a: 'Taylor Swift', ac: 0.6210 },
+  { y: 2011, a: 'Justin Bieber', ac: 0.9580 },
+  { y: 2011, a: 'Michael Bublé', ac: 0.9580 },
+  { y: 2011, a: 'Michael Bublé', ac: 0.9590 },
+  { y: 2015, a: 'Pentatonix', ac: 0.9340 },
+];
+
+/* ══ Phase 4 数据块 —— 程序生成，禁止手改 ═══════════════════════
+   来源：锁定视图 era_quadrant（11 行 / 12 列）
+   生成方式：.venv/Scripts/python.exe 从 spotify.duckdb 直读导出，逐值比对通过
+   数值一律由 SQL 层 round(x,6) 交付，前端不再二次舍入
+
+   ⚠️ 两个"相关"不同层，禁止混用：
+     · EQ_ROWS[].corr  = 视图列 corr_ac_en，**同一十年内**单曲之间的相关
+       （如 2000s −0.7485）
+     · EQ_META.r       = **11 个十年均值点之间**的相关（−0.9885）
+     两者都真实但层不同；文案必须写清是哪一个。
+
+   ⚠️ 误差椭圆半径用 SE = σ/√n（均值的标准误），不是 σ。
+     mean ± 1σ 下 9/11 个十年越出 [0,1]；SE 才是"均值置信区间"的正确语义。
+   ═══════════════════════════════════════════════════════════════ */
+const EQ_ROWS = [
+  { dec: 1920, partial: false, ac: 0.801554, sdac: 0.320373, en: 0.235133, sden: 0.138892, corr: -0.165591,
+    q1: 76.16, q2: 3.32, q3: 19.22, q4: 1.31, n: 5126 },
+  { dec: 1930, partial: false, ac: 0.867694, sdac: 0.212167, en: 0.286655, sden: 0.171518, corr: -0.235642,
+    q1: 82.73, q2: 9.03, q3: 6.2, q4: 2.04, n: 9549 },
+  { dec: 1940, partial: false, ac: 0.870974, sdac: 0.226711, en: 0.254896, sden: 0.171623, corr: -0.157617,
+    q1: 83.05, q2: 8.25, q3: 7.35, q4: 1.35, n: 15378 },
+  { dec: 1950, partial: false, ac: 0.840334, sdac: 0.18673, en: 0.286753, sden: 0.190407, corr: -0.464046,
+    q1: 82.33, q2: 11.02, q3: 3.78, q4: 2.88, n: 19850 },
+  { dec: 1960, partial: false, ac: 0.624013, sdac: 0.289895, en: 0.41452, sden: 0.222928, corr: -0.604874,
+    q1: 54.7, q2: 15.08, q3: 10.98, q4: 19.23, n: 19549 },
+  { dec: 1970, partial: false, ac: 0.400162, sdac: 0.308921, en: 0.533716, sden: 0.231957, corr: -0.641895,
+    q1: 28.86, q2: 9.63, q3: 16.36, q4: 45.16, n: 20000 },
+  { dec: 1980, partial: false, ac: 0.298634, sdac: 0.314378, en: 0.594715, sden: 0.260772, corr: -0.715337,
+    q1: 20.89, q2: 5.45, q3: 14.77, q4: 58.89, n: 19850 },
+  { dec: 1990, partial: false, ac: 0.307533, sdac: 0.316486, en: 0.586066, sden: 0.249014, corr: -0.72112,
+    q1: 21.69, q2: 5.99, q3: 14.11, q4: 58.2, n: 19901 },
+  { dec: 2000, partial: false, ac: 0.269761, sdac: 0.303806, en: 0.651586, sden: 0.238287, corr: -0.748494,
+    q1: 16.84, q2: 6.47, q3: 8.31, q4: 68.38, n: 19646 },
+  { dec: 2010, partial: false, ac: 0.264094, sdac: 0.296639, en: 0.629011, sden: 0.224556, corr: -0.691031,
+    q1: 15.67, q2: 6.2, q3: 10.55, q4: 67.57, n: 19774 },
+  { dec: 2020, partial: true, ac: 0.219931, sdac: 0.240484, en: 0.631232, sden: 0.163255, corr: -0.499978,
+    q1: 8.77, q2: 5.22, q3: 10.15, q4: 75.86, n: 2030 },
+];
+
+/* 10 段派生量：d 欧氏距离 / dstd 标准化距离 / speed 线宽归一 [0,1] /
+   share 占总路径 % / seAc·seEn 合并标准误 / sigAc·sigEn 是否 >3SE / dCorr 相关变化 */
+const EQ_SEG = [
+  { from: 1920, to: 1930, d: 0.083839, dac: 0.06614, den: 0.051522, dstd: 0.405221, speed: 0.296143, share: 8.93,
+    seAc: 0.004974, seEn: 0.002616, sigAc: true, sigEn: true, dCorr: -0.070051, dQ4: 0.73 },
+  { from: 1930, to: 1940, d: 0.031928, dac: 0.00328, den: -0.031759, dstd: 0.196449, speed: 0.080921, share: 3.4,
+    seAc: 0.002838, seEn: 0.002235, sigAc: false, sigEn: true, dCorr: 0.078025, dQ4: -0.69 },
+  { from: 1940, to: 1950, d: 0.0442, dac: -0.03064, den: 0.031857, dstd: 0.228484, speed: 0.1318, share: 4.71,
+    seAc: 0.002258, seEn: 0.001934, sigAc: true, sigEn: true, dCorr: -0.306429, dQ4: 1.53 },
+  { from: 1950, to: 1960, d: 0.251235, dac: -0.216321, den: 0.127767, dstd: 1.13864, speed: 0.990162, share: 26.76,
+    seAc: 0.002461, seEn: 0.00209, sigAc: true, sigEn: true, dCorr: -0.140828, dQ4: 16.35 },
+  { from: 1960, to: 1970, d: 0.253608, dac: -0.223851, den: 0.119196, dstd: 1.124102, speed: 1, share: 27.01,
+    seAc: 0.003012, seEn: 0.002287, sigAc: true, sigEn: true, dCorr: -0.037021, dQ4: 25.93 },
+  { from: 1970, to: 1980, d: 0.118443, dac: -0.101528, den: 0.060999, dstd: 0.538845, speed: 0.43961, share: 12.62,
+    seAc: 0.003123, seEn: 0.002473, sigAc: true, sigEn: true, dCorr: -0.073442, dQ4: 13.73 },
+  { from: 1980, to: 1990, d: 0.01241, dac: 0.008899, den: -0.008649, dstd: 0.063182, speed: 0, share: 1.32,
+    seAc: 0.003164, seEn: 0.002558, sigAc: false, sigEn: true, dCorr: -0.005783, dQ4: -0.69 },
+  { from: 1990, to: 2000, d: 0.075628, dac: -0.037772, den: 0.06552, dstd: 0.429134, speed: 0.2621, share: 8.06,
+    seAc: 0.003119, seEn: 0.002451, sigAc: true, sigEn: true, dCorr: -0.027374, dQ4: 10.18 },
+  { from: 2000, to: 2010, d: 0.023275, dac: -0.005667, den: -0.022575, dstd: 0.141011, speed: 0.045046, share: 2.48,
+    seAc: 0.003025, seEn: 0.002332, sigAc: false, sigEn: true, dCorr: 0.057463, dQ4: -0.81 },
+  { from: 2010, to: 2020, d: 0.044219, dac: -0.044163, den: 0.002221, dstd: 0.168216, speed: 0.131879, share: 4.71,
+    seAc: 0.005739, seEn: 0.00396, sigAc: true, sigEn: false, dCorr: 0.191053, dQ4: 8.29 },
+];
+
+/* 11 点派生量：pc1（已翻转符号，越大=越"电声现代"）/ pc2 / dStart 距起点 /
+   dCentroid 距历史重心 / zone 三段式归位（plateau 高台期 / rupture 断层带 / electric 电声常态） */
+const EQ_DRIFT = [
+  { dec: 1920, pc1: -0.289774, pc2: -0.213131, dStart: 0, dCentroid: 0.359713, zone: 'plateau' },
+  { dec: 1930, pc1: -0.352951, pc2: -0.158016, dStart: 0.083839, dCentroid: 0.386708, zone: 'plateau' },
+  { dec: 1940, pc1: -0.357989, pc2: -0.189543, dStart: 0.072178, dCentroid: 0.405072, zone: 'plateau' },
+  { dec: 1950, pc1: -0.325628, pc2: -0.159437, dStart: 0.064564, dCentroid: 0.362565, zone: 'plateau' },
+  { dec: 1960, pc1: -0.102546, pc2: -0.043879, dStart: 0.25239, dCentroid: 0.111539, zone: 'rupture' },
+  { dec: 1970, pc1: 0.127579, pc2: 0.062703, dStart: 0.500267, dCentroid: 0.142155, zone: 'electric' },
+  { dec: 1980, pc1: 0.232337, pc2: 0.11797, dStart: 0.618246, dCentroid: 0.260572, zone: 'electric' },
+  { dec: 1990, pc1: 0.222972, pc2: 0.109828, dStart: 0.605979, dCentroid: 0.248553, zone: 'electric' },
+  { dec: 2000, pc1: 0.264324, pc2: 0.17315, dStart: 0.675453, dCentroid: 0.315987, zone: 'electric' },
+  { dec: 2010, pc1: 0.268729, pc2: 0.150295, dStart: 0.666336, dCentroid: 0.307902, zone: 'electric' },
+  { dec: 2020, pc1: 0.312947, pc2: 0.15006, dStart: 0.70369, dCentroid: 0.347064, zone: 'electric' },
+];
+
+/* 全局量：pc1Var 共线性诊断 / r 均值点间相关 / centroid 历史重心 /
+   pathRaw 总路径 / chordRaw 首尾直线 / sinuosity 曲折度 / dMax·dMin 段距离极值 */
+const EQ_META = { n: 11, sdAc: 0.263413, sdEn: 0.161991, pc1Var: 99.54, r: -0.988529,
+  centroid: [0.524062, 0.464026], pathRaw: 0.938785, chordRaw: 0.70369, sinuosity: 1.334089, dMax: 0.253608, dMin: 0.01241,
+  pc1Vec: [0.998457, -0.055529] };
+
+const microEl     = document.getElementById('chart-micro');
+const microDeepEl = document.getElementById('chart-micro-deep');
+
+let playedIntroMicro = false;   // 同上：入场动画只在首次渲染播放
+let playedIntroDeep  = false;
+
+/* 视图覆盖的 9 个十年。缺格的十年【保留位置】而不压缩 ——
+   这是「10 张图横向严格对齐」的前提：所有面板共用同一个 x 映射，
+   1980s 参考线才能落在同一列上贯穿全部小图。 */
+const SVC_DECADES = [1930,1940,1950,1960,1970,1980,1990,2000,2010];
+const SVC_VALLEY  = 1980;
+const SM = {
+  line : '#D1D1D6',        // 中性灰折线：让 10 张图的形状自己说话
+  micro: '#FF375F',
+  muted: '#8E8E93',
+  grid : '#262626',
+  cell : 'rgba(255,255,255,.025)'
+};
+
+/* 某首歌的「最低点」：**不计薄格子**。
+   n≤2 的格子单个版本就能改写均值，把谷定在那里等于把噪声当地标。
+   只有整首都只剩薄格子时才退回全量比较。 */
+function svcValley(song){
+  const solid = song.cells.filter(c => !c.thin);
+  const pool  = solid.length ? solid : song.cells;
+  return pool.reduce((a, b) => (b.mean < a.mean ? b : a), pool[0]);
+}
+
+/* 深潜锚点：全部从数据里取，不写死
+   - 谷：行级 44 条记录里原声度最低的那一条（含年份）
+   - 峰：视图 2010s 格子的 max_acousticness，年份按「艺人 + 数值」回查行级记录 */
+const SLN_SONG   = SVC_SONGS.find(s => s.key === 'silent night');
+const SLN_ROW_LO = SLN_RECORDS.reduce((a, b) => (b.ac < a.ac ? b : a), SLN_RECORDS[0]);
+const SLN_C10    = SLN_SONG.cells.find(c => c.dec === 2010);
+const SLN_ROW_HI = SLN_RECORDS.find(r => r.a === SLN_C10.hiA && Math.abs(r.ac - SLN_C10.hi) < 1e-9);
+const SLN_PEAK   = { y: SLN_ROW_HI ? SLN_ROW_HI.y : 2011, ac: SLN_C10.hi, artist: SLN_C10.hiA };
+const SLN_DELTA  = SLN_PEAK.ac - SLN_ROW_LO.ac;
+
+const pooledOf = dec => SVC_POOLED.find(p => p.dec === dec);
+
+/* ── 4.1 主图：小多图 ─────────────────────────────────────────────── */
+function renderMicro(){
+  const W = microEl.clientWidth;
+  if (!W) return;
+  const isIntro = !playedIntroMicro;
+
+  /* 网格：宽屏 5×2，中屏 4/3 列，窄屏 2×5。
+     列数变化只改格子尺寸，不改 x 映射 —— 对齐关系在任何宽度下都成立。 */
+  const cols = W >= 1180 ? 5 : (W >= 900 ? 4 : (W >= 620 ? 3 : 2));
+  const n    = SVC_SONGS.length;
+  const rows = Math.ceil(n / cols);
+  const gap  = W < 520 ? 8 : 12;
+  const ph   = W < 520 ? 78 : (W < 900 ? 86 : 94);
+  const M    = { top: 12, right: 8, bottom: W < 520 ? 42 : 34, left: W < 520 ? 28 : 36 };
+  const pw   = (W - M.left - M.right - gap * (cols - 1)) / cols;
+  const H    = M.top + rows * ph + (rows - 1) * gap + M.bottom;
+
+  d3.select(microEl).selectAll('svg').remove();
+  const loadingEl = document.getElementById('micro-loading');
+  if (loadingEl) loadingEl.remove();
+
+  const svg = d3.select(microEl)
+      .append('svg')
+      .attr('width', W).attr('height', H)
+      .attr('viewBox', `0 0 ${W} ${H}`)
+      .attr('role', 'img')
+      .attr('aria-label',
+            '小多图：10 首经典曲目各自的十年原声度均值轨迹，共享纵轴 0 到 1；' +
+            '红色虚线标出 1980s，多数曲目在这一带触及自身最低点；' +
+            '版本数不超过 2 的格子用空心点与虚线标出，2020s 全部缺失');
+
+  const PT = 18;                    // 面板内：标题行占用
+  const FB = 14;                    // 面板内：脚注行占用
+  const plotH = ph - PT - FB;
+
+  const x = d3.scalePoint().domain(SVC_DECADES).range([0, pw]).padding(0.42);
+  // ⚠️ 严格共享：所有面板复用同一个 y 映射，domain 恒为 [0,1]，不做任何自适应缩放。
+  //    否则每首歌按自身极差铺满画布，10 张图的斜率将不可比，「谷底对齐」也会消失。
+  const y = d3.scaleLinear().domain(CFG.yDomain).range([plotH, 0]);
+
+  const reduceMotion =
+    window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  /* 4.1.1 面板与骨架 */
+  const panels = svg.selectAll('g.sm').data(SVC_SONGS).enter()
+      .append('g').attr('class', 'sm')
+      .attr('transform', (d, i) => {
+        const r = Math.floor(i / cols), c = i % cols;
+        return `translate(${M.left + c * (pw + gap)},${M.top + r * (ph + gap)})`;
+      });
+
+  panels.append('rect')
+      .attr('x', 0).attr('y', 0).attr('width', pw).attr('height', ph)
+      .attr('rx', 8).attr('fill', SM.cell);
+
+  // 0.5 半格参考线：原声度的「中间值」，让每首歌的振幅有共同刻度
+  panels.append('line')
+      .attr('x1', 0).attr('x2', pw).attr('y1', PT + y(0.5)).attr('y2', PT + y(0.5))
+      .attr('stroke', SM.grid).attr('stroke-width', 1);
+
+  /* 面板标题：默认用完整曲名，但必须保证不撞右上角的 n= 标签。
+     最长的 "Have Yourself a merry little Christmas" 在 4 列布局下会伸出格子、
+     压住 n=47 —— 实拍截图与「注解几何自动检测」都抓到了（重叠 19.8px）。
+     处理分三层：① 人工缩略表（完整名仍保留在 tooltip 标题行、aria-label 与正文）；
+     ② 实在放不下就降字号；③ 仍放不下才截断加省略号。
+     这样任何宽度下都不可能越界，而不是只针对当前这一首打补丁。 */
+  const SHORT_LABEL = { 'have yourself a merry little christmas': 'Have Yourself a…' };
+  const estW = (s, fs) => Array.from(s).reduce(
+      (a, ch) => a + (/[\u2E80-\uA4CF\uAC00-\uD7A3\uFF00-\uFF60]/.test(ch) ? fs : fs * 0.55), 0);
+  const titleFs = W < 520 ? 10 : 11;
+  const titleFit = new Map();
+  SVC_SONGS.forEach(song => {
+    const avail = pw - 8 - 6 - 8 - estW('n=' + song.vtot, 9.5);
+    let s = SHORT_LABEL[song.key] || song.label;
+    let fs = titleFs;
+    while (fs > 8.5 && estW(s, fs) > avail) fs -= 0.5;
+    if (estW(s, fs) > avail){
+      s = s.slice(0, -1);
+      while (s.length > 1 && estW(s + '…', fs) > avail) s = s.slice(0, -1);
+      s += '…';
+    }
+    titleFit.set(song.key, { s, fs });
+  });
+
+  panels.append('text')
+      .attr('x', 8).attr('y', 12)
+      .attr('fill', '#c9c9cf')
+      .attr('font-size', d => titleFit.get(d.key).fs).attr('font-weight', 600)
+      .text(d => titleFit.get(d.key).s);
+
+  panels.append('text')
+      .attr('x', pw - 8).attr('y', 12).attr('text-anchor', 'end')
+      .attr('fill', 'var(--text-3)').attr('font-size', 9.5)
+      .text(d => 'n=' + d.vtot);
+
+  panels.append('text')
+      .attr('x', 8).attr('y', ph - 4)
+      .attr('fill', 'var(--text-3)').attr('font-size', 9.5)
+      .text(d => '谷 ' + svcValley(d).dec + 's');
+
+  panels.append('text')
+      .attr('x', pw - 8).attr('y', ph - 4).attr('text-anchor', 'end')
+      .attr('fill', SM.muted).attr('font-size', 9.5)
+      .text(d => { const k = d.cells.filter(c => c.thin).length; return k ? '薄格 ' + k : ''; });
+
+  const plot = panels.append('g').attr('transform', `translate(0,${PT})`);
+
+  /* 4.1.2 数据折线
+     分两条路径承载：
+       · 实线 = 两端都是「厚格子」的区段
+       · 虚线 = 任一端是薄格子的区段（n≤2，单个版本即可改写均值）
+     用 d3.line 的 defined() 无法区分「该断」与「该虚」，故手工拼段落。 */
+  const seriesOf = song => SVC_DECADES.map(d => ({
+    dec : d,
+    cell: song.cells.find(c => c.dec === d) || null
+  }));
+
+  function segPath(song, wantDash){
+    let d = '';
+    const s = seriesOf(song);
+    for (let i = 0; i < s.length - 1; i++){
+      const a = s[i], b = s[i + 1];
+      if (!a.cell || !b.cell) continue;                  // 缺格 → 直接断开，不插值
+      const thin = a.cell.thin || b.cell.thin;
+      if (thin !== wantDash) continue;
+      d += `M${x(a.dec)},${y(a.cell.mean)}L${x(b.dec)},${y(b.cell.mean)}`;
+    }
+    return d;
+  }
+
+  /* ⚠️ 陷阱（Phase 3 实拍截图揪出）：plot 是 **10 个面板 g 的 selection**，
+     对它 `.data(SVC_SONGS)` 会把整份数组广播进**每一个** group —— 于是每格画出
+     10 条线、10 个环、10 条参考线，10 张图全部叠成同一团毛线（截图里那团乱麻）。
+     正确写法是嵌套 join 的父级数据形式 `.data(d => [d])`：
+     回调按 group 求值，收到的是该面板自己的 datum，于是每组恰好 1 个元素。
+     同理，点集要用 `.data(song => 该面板的子集)`，而不是先摊平再喂给多组 selection。 */
+  const solidPaths = plot.append('g')
+      .selectAll('path.sm-solid').data(d => [d]).enter()
+      .append('path').attr('class', 'sm-solid')
+      .attr('d', d => segPath(d, false))
+      .attr('fill', 'none').attr('stroke', SM.line)
+      .attr('stroke-width', 1.6).attr('stroke-linecap', 'round');
+
+  const dashPaths = plot.append('g')
+      .selectAll('path.sm-dash').data(d => [d]).enter()
+      .append('path').attr('class', 'sm-dash')
+      .attr('d', d => segPath(d, true))
+      .attr('fill', 'none').attr('stroke', SM.muted)
+      .attr('stroke-width', 1.6).attr('stroke-dasharray', '3 3')
+      .attr('stroke-linecap', 'round');
+
+  /* 4.1.3 数据点：厚格子实心、薄格子空心（视觉降级的第一层） */
+
+  const dotG = plot.append('g');
+  const dots = dotG.selectAll('circle.sm-dot')
+      .data(song => seriesOf(song).filter(s => s.cell && !s.cell.thin))
+      .enter().append('circle').attr('class', 'sm-dot')
+      .attr('cx', s => x(s.dec)).attr('cy', s => y(s.cell.mean))
+      .attr('r', 2.8).attr('fill', SM.line).style('pointer-events', 'none');
+
+  const thinDots = dotG.selectAll('circle.sm-dot-thin')
+      .data(song => seriesOf(song).filter(s => s.cell && s.cell.thin))
+      .enter().append('circle').attr('class', 'sm-dot-thin')
+      .attr('cx', s => x(s.dec)).attr('cy', s => y(s.cell.mean))
+      .attr('r', 2.8).attr('fill', '#181818')
+      .attr('stroke', SM.muted).attr('stroke-width', 1.4)
+      .style('pointer-events', 'none');
+
+  /* 4.1.4 该曲目自身的最低点（环标记），把「各有各的谷」画出来 */
+  const rings = plot.append('g')
+      .selectAll('circle.sm-ring').data(song => { const v = svcValley(song); return [v]; })
+      .enter()
+      .append('circle').attr('class', 'sm-ring')
+      .attr('cx', d => x(d.dec)).attr('cy', d => y(d.mean))
+      .attr('r', 5.4).attr('fill', 'none')
+      .attr('stroke', SM.micro).attr('stroke-width', 1.4).attr('opacity', .85)
+      .style('pointer-events', 'none');
+
+  /* 4.1.5 贯穿所有小图的 1980s 参考线（谷底共识）
+     每个面板各画一段：面板间距很小，视觉上连成一条，且不受面板裁剪影响。 */
+  const refLines = plot.append('g')
+      .selectAll('line.sm-ref').data(d => [d]).enter()
+      .append('line').attr('class', 'sm-ref')
+      .attr('x1', x(SVC_VALLEY)).attr('x2', x(SVC_VALLEY))
+      .attr('y1', 0).attr('y2', plotH)
+      .attr('stroke', 'rgba(255,55,95,.62)').attr('stroke-width', 1)
+      .attr('stroke-dasharray', '2 3')
+      .style('pointer-events', 'none');
+
+  // 参考线只在整幅图顶部标一次名，避免 10 次重复。
+  // ⚠️ 放在面板**上方**（svg 顶边距里），不要放进第一格：第一格的上半区正是数据所在，
+  //    标在里面会压住 White Christmas 的折线与数据点（实拍截图确认过）。
+  svg.append('text')
+      .attr('x', M.left + x(SVC_VALLEY) + 4).attr('y', M.top - 3)
+      .attr('fill', SM.micro).attr('font-size', 9.5).attr('font-weight', 600)
+      .text('1980s');
+
+  /* 4.1.6 纵轴刻度（每一行标一次）+ 横轴（最后一行的每一列各标一次）
+     横轴不能只画一条：每个面板有自己的局部 x 映射，全局一条会对不齐列。 */
+  const axis = svg.append('g');
+  const yTicks = [0, 0.5, 1];
+  for (let r = 0; r < rows; r++){
+    const top = M.top + r * (ph + gap) + PT;
+    yTicks.forEach(t => {
+      axis.append('text')
+          .attr('x', M.left - 6).attr('y', top + y(t) + 3).attr('text-anchor', 'end')
+          .attr('fill', 'var(--text-3)').attr('font-size', 9)
+          .text(t === 1 ? '1.0' : t === 0.5 ? '0.5' : '0');
+    });
+  }
+
+  const xTicks = [1930, 1950, 1970, 1990, 2010];
+  const axisY = M.top + (rows - 1) * (ph + gap) + ph + 14;
+  for (let c = 0; c < cols; c++){
+    const left = M.left + c * (pw + gap);
+    axis.append('line')
+        .attr('x1', left).attr('x2', left + pw)
+        .attr('y1', axisY - 11).attr('y2', axisY - 11)
+        .attr('stroke', SM.grid).attr('stroke-width', 1);
+    xTicks.forEach(t => {
+      axis.append('text')
+          .attr('x', left + x(t)).attr('y', axisY).attr('text-anchor', 'middle')
+          .attr('fill', t === SVC_VALLEY ? SM.micro : 'var(--text-3)')
+          .attr('font-size', 9)
+          .text("'" + String(t).slice(2));
+    });
+  }
+
+  /* 4.1.7 交互层：整块透明命中区按 x 吸附到最近的十年，
+     同屏给出该格子的 n / 均值 / 极值艺人，以及全 10 首的共识值。
+
+     ⚠️⚠️ 陷阱（Phase 3 用合成事件实测揪出的**真 bug**，不是测试假警报）：
+         `d3.pointer(ev, this)` 里的 this 若是**带 x/y 的 <rect>**，解出来的不是
+         元素局部坐标，而是 **SVG 根坐标**。因为 d3.pointer 走的是
+         `node.getScreenCTM().inverse()`，而 getScreenCTM() **只含祖先 transform，
+         不含元素自身的 x/y**。实测：第 3 格命中区 x=505、屏幕左 728，
+         但 ctm.e = 223（= svg 屏幕左），于是本地点 (136.4) 被解成 641.4。
+         后果是整格 0→210 的横向扫描**全部**吸附到 2010s —— 只有第 0 列
+         （x=36，偏差小）看起来正常，其余列的 hover 全错。
+         Phase 1/2 没踩到是因为它们传的是 `g.node()`：<g> 自身没有 x/y，
+         而它的 transform 恰好就在 CTM 里，所以是对的。
+         修法：拿 svg 根坐标（无 transform、无 x/y，最稳），再手工减掉面板偏移。 */
+  const hoverX = svg.append('g').style('pointer-events', 'none');
+  const hoverMark = [];
+  for (let i = 0; i < SVC_SONGS.length; i++){
+    const r = Math.floor(i / cols), c = i % cols;
+    hoverMark.push(hoverX.append('line')
+        .attr('x1', 0).attr('x2', 0)
+        .attr('y1', M.top + r * (ph + gap) + PT - 3)
+        .attr('y2', M.top + r * (ph + gap) + PT + plotH + 3)
+        .attr('stroke', '#9aa0a6').attr('stroke-width', 1)
+        .attr('stroke-dasharray', '3 4').attr('opacity', 0));
+  }
+
+  const hit = svg.append('g');
+  SVC_SONGS.forEach((song, i) => {
+    const r = Math.floor(i / cols), c = i % cols;
+    const panelL = M.left + c * (pw + gap);        // 该面板在 SVG 根坐标系里的左边界
+    hit.append('rect')
+        .attr('x', panelL).attr('y', M.top + r * (ph + gap) + PT)
+        .attr('width', pw).attr('height', plotH)
+        .attr('fill', 'transparent').style('cursor', 'crosshair')
+        .on('mousemove', function(ev){
+          const [px] = d3.pointer(ev, svg.node());   // ≠ 元素局部：见上方陷阱说明
+          const mx = px - panelL;                    // 手工换算成面板局部 x
+          let best = SVC_DECADES[0], bd = Infinity;
+          SVC_DECADES.forEach(dd => {
+            const dist = Math.abs(x(dd) - mx);
+            if (dist < bd){ bd = dist; best = dd; }
+          });
+          hoverMark[i].attr('x1', x(best)).attr('x2', x(best)).attr('opacity', .55);
+          showTipMicro(ev, song, best);
+        })
+        .on('mouseleave', () => {
+          hoverMark[i].attr('opacity', 0);
+          hideTooltip();
+        });
+  });
+
+  /* 4.1.8 入场动画 + 兜底复位（沿用 Phase 1/2 的 settle 写法）
+     与主图同理：d3.transition 依赖 rAF，切标签页/休眠会让它冻结在中间态。
+     故这里用「先 interrupt 再写终态」的硬兜底，定时器走真实时钟。 */
+  const settleMicro = () => {
+    [svg.selectAll('g.sm'), solidPaths, dashPaths, dots, thinDots, rings, refLines]
+        .forEach(sel => sel.interrupt());
+    svg.selectAll('g.sm').attr('opacity', 1);
+    solidPaths.attr('opacity', 1);
+    dashPaths.attr('opacity', 1);
+    dots.attr('opacity', 1);
+    thinDots.attr('opacity', 1);
+    rings.attr('opacity', .85);
+    refLines.attr('opacity', 1);
+  };
+
+  if (isIntro && !reduceMotion){
+    playedIntroMicro = true;
+    svg.selectAll('g.sm').attr('opacity', 0)
+        .transition().duration(420).ease(d3.easeCubicOut).attr('opacity', 1);
+    solidPaths.attr('opacity', 0)
+        .transition().delay(240).duration(520).ease(d3.easeCubicOut).attr('opacity', 1);
+    dashPaths.attr('opacity', 0)
+        .transition().delay(300).duration(520).ease(d3.easeCubicOut).attr('opacity', 1);
+    dots.attr('opacity', 0)
+        .transition().delay((d, i) => 520 + i * 14).duration(280).attr('opacity', 1);
+    thinDots.attr('opacity', 0)
+        .transition().delay((d, i) => 520 + i * 14).duration(280).attr('opacity', 1);
+    rings.attr('opacity', 0)
+        .transition().delay((d, i) => 760 + i * 34).duration(320).ease(d3.easeBackOut)
+        .attr('opacity', .85);
+    refLines.attr('opacity', 0)
+        .transition().delay(900).duration(420).attr('opacity', 1);
+    setTimeout(settleMicro, CFG.animMs + 900);
+    setTimeout(settleMicro, 2600);
+  } else {
+    settleMicro();
+  }
+}
+
+/* ── 4.2 主图 Tooltip ────────────────────────────────────────────── */
+function showTipMicro(ev, song, dec){
+  const cell = song.cells.find(c => c.dec === dec);
+  const pool = pooledOf(dec);
+  const head = `<div class="tt-h"><span>${song.label} · ${dec}s</span>
+      <span class="tt-n">版本格子</span></div>`;
+
+  let body;
+  if (!cell){
+    body = `<div class="tt-note">◌ 该十年清洗后<b>无记录</b> —— 折线在此断开，不做插值</div>`;
+  } else {
+    const thin = cell.thin;
+    body = `
+      <div class="tt-r"><span class="k">版本数 n</span><span class="v">${cell.n}</span></div>
+      <div class="tt-r"><span class="k">原声度均值</span><span class="v">${cell.mean.toFixed(4)}</span></div>
+      <div class="tt-r"><span class="k">格内区间</span><span class="v">${cell.lo.toFixed(3)} – ${cell.hi.toFixed(3)}</span></div>
+      <div class="tt-sep"></div>
+      <div class="tt-mini"><span>最低 · ${cell.loA}</span><span>${cell.lo.toFixed(3)}</span></div>
+      <div class="tt-mini"><span>最高 · ${cell.hiA}</span><span>${cell.hi.toFixed(3)}</span></div>
+      <div class="tt-mini"><span>实际年份</span><span>${cell.y0}–${cell.y1}</span></div>
+      ${pool ? `<div class="tt-sep"></div>
+      <div class="tt-r"><span class="k">全 10 首共识（等权）</span>
+        <span class="v">${pool.eq.toFixed(4)}</span></div>
+      <div class="tt-mini"><span>该年 ${pool.k} 首有记录 · 共 ${pool.n} 版</span><span></span></div>` : ''}
+      ${thin ? `<div class="tt-note">⚠ <b>薄格子</b>（n = ${cell.n} ≤ 2）：
+        单个版本即可改写均值，这一格<b>不可解读为趋势</b>。折线的相邻段已改为虚线、
+        点已改为空心。</div>` : ''}
+    `;
+  }
+
+  tooltip.innerHTML = head + body;
+  tooltip.classList.add('on');
+  placeTooltip(ev);
+}
+
+/* ── 4.3 副图：Silent Night 单曲深潜 ─────────────────────────────── */
+function renderMicroDeep(){
+  const W = microDeepEl.clientWidth;
+  if (!W) return;
+  const isIntro = !playedIntroDeep;
+
+  const H = W < 560 ? 300 : (W < 900 ? 320 : 360);
+  const M = { top: W < 560 ? 62 : 54, right: W < 560 ? 16 : 26, bottom: W < 560 ? 46 : 40, left: W < 560 ? 38 : 48 };
+  const iw = Math.max(10, W - M.left - M.right);
+  const ih = Math.max(10, H - M.top - M.bottom);
+
+  d3.select(microDeepEl).selectAll('svg').remove();
+  const loadingEl = document.getElementById('micro-deep-loading');
+  if (loadingEl) loadingEl.remove();
+
+  const svg = d3.select(microDeepEl)
+      .append('svg')
+      .attr('width', W).attr('height', H)
+      .attr('viewBox', `0 0 ${W} ${H}`)
+      .attr('role', 'img')
+      .attr('aria-label',
+            '散点图：Silent Night 的全部 44 条版本记录按录音年份排列的原声度；' +
+            '1985 年 Bon Jovi 版为全曲最低 0.091，2011 年 Michael Bublé 版为复兴期最高 0.959');
+
+  const g = svg.append('g').attr('transform', `translate(${M.left},${M.top})`);
+
+  /* x 用线性年轴（不是十年刻度）—— 深潜要暴露「同一年内多个版本」的密度 */
+  const x = d3.scaleLinear().domain([1938, 2019]).range([0, iw]);
+  const y = d3.scaleLinear().domain(CFG.yDomain).range([ih, 0]);
+
+  const reduceMotion =
+    window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  const MIN_W = 7;   // 十年带的最小宽度：y0==y1 的年份区间不至于画成看不见的一条
+
+  /* 4.3.1 1980s 十年底纹 + 视图的十年区间带（min–max） */
+  const band80 = g.append('rect')
+      .attr('x', x(1980)).attr('y', 0)
+      .attr('width', Math.max(MIN_W, x(1990) - x(1980))).attr('height', ih)
+      .attr('fill', 'rgba(255,55,95,.055)');
+
+  const cells = SLN_SONG.cells.slice().sort((a, b) => a.dec - b.dec);
+  g.selectAll('rect.dr').data(cells).enter()
+      .append('rect').attr('class', 'dr')
+      .attr('x', d => x(d.y0))
+      .attr('y', d => y(d.hi))
+      .attr('width', d => Math.max(MIN_W, x(d.y1) - x(d.y0)))
+      .attr('height', d => Math.max(2, y(d.lo) - y(d.hi)))
+      .attr('rx', 3)
+      .attr('fill', 'rgba(255,55,95,.16)')
+      .style('pointer-events', 'none');
+
+  /* 4.3.2 单条版本连线（按年份排序）+ 视图的十年均值线
+     前者是「原始数据」，后者是「视图数据」—— 两者同屏，读者能直接看出
+     均值线把 44 个点的形状压成什么样。 */
+  const recs = SLN_RECORDS.slice().sort((a, b) => a.y - b.y);
+  const recLine = d3.line().x(d => x(d.y)).y(d => y(d.ac)).curve(d3.curveMonotoneX);
+
+  const connPath = g.append('path')
+      .attr('d', recLine(recs))
+      .attr('fill', 'none').attr('stroke', SM.micro)
+      .attr('stroke-width', 1).attr('stroke-opacity', .28);
+
+  const meanPts = cells.map(c => ({ y: (c.y0 + c.y1) / 2, mean: c.mean }));
+  const meanLine = g.append('path')
+      .attr('d', d3.line().x(d => x(d.y)).y(d => y(d.mean)).curve(d3.curveMonotoneX)(meanPts))
+      .attr('fill', 'none').attr('stroke', SM.micro)
+      .attr('stroke-width', 2).attr('stroke-opacity', .6).attr('stroke-linecap', 'round');
+
+  /* 4.3.3 44 个版本点 */
+  const dotG = g.append('g');
+  const sdots = dotG.selectAll('circle').data(recs).enter()
+      .append('circle')
+      .attr('cx', d => x(d.y)).attr('cy', d => y(d.ac))
+      .attr('r', 3.1).attr('fill', SM.micro).attr('fill-opacity', .9)
+      .style('cursor', 'pointer')
+      .on('mousemove', function(ev, d){
+        tooltip.innerHTML = `
+          <div class="tt-h"><span>Silent Night · ${d.y}</span><span class="tt-n">单条版本</span></div>
+          <div class="tt-r"><span class="k">艺人</span><span class="v" style="font-size:14px">${d.a}</span></div>
+          <div class="tt-r"><span class="k">原声度</span><span class="v">${d.ac.toFixed(3)}</span></div>
+          <div class="tt-mini"><span>全曲最低 0.091（Bon Jovi 1985）</span><span></span></div>
+        `;
+        tooltip.classList.add('on');
+        placeTooltip(ev);
+      })
+      .on('mouseleave', hideTooltip);
+
+  /* 4.3.4 谷底 ↔ 复兴峰：两个高亮点 + L 形引导线 + Δ 标注 */
+  const hiG = g.append('g').style('pointer-events', 'none');
+  hiG.append('circle')
+      .attr('cx', x(SLN_ROW_LO.y)).attr('cy', y(SLN_ROW_LO.ac))
+      .attr('r', 7).attr('fill', 'none').attr('stroke', SM.micro).attr('stroke-width', 2);
+  hiG.append('circle')
+      .attr('cx', x(SLN_PEAK.y)).attr('cy', y(SLN_PEAK.ac))
+      .attr('r', 7).attr('fill', 'none').attr('stroke', SM.micro).attr('stroke-width', 2);
+
+  // L 形：先从谷底竖直拉到峰的高度，再水平拉到峰的位置
+  const lead = `M${x(SLN_ROW_LO.y)},${y(SLN_ROW_LO.ac)}
+                L${x(SLN_ROW_LO.y)},${y(SLN_PEAK.ac)}
+                L${x(SLN_PEAK.y)},${y(SLN_PEAK.ac)}`;
+  hiG.append('path')
+      .attr('d', lead).attr('fill', 'none')
+      .attr('stroke', SM.micro).attr('stroke-width', 1.2)
+      .attr('stroke-dasharray', '4 3').attr('stroke-opacity', .75);
+
+  /* 谷侧注解：两行一起向上收。
+     ⚠️ 原来的钳位是 ih-4，只保证**第一行**不出血，第二行会正好落进坐标轴刻度行 ——
+        窄屏 ih 变小后「全曲最低」压住 1990 刻度（注解几何自动检测在 478px 抓到）。
+        改为按两行总高（≈19px）预留，并把横向起笔从 +9 推到 +12，让开 r=7 的高亮环。 */
+  const loLabY = Math.min(ih - 19, y(SLN_ROW_LO.ac) + 20);
+  hiG.append('text')
+      .attr('x', x(SLN_ROW_LO.y) + 12).attr('y', loLabY)
+      .attr('fill', SM.micro).attr('font-size', W < 560 ? 10 : 11).attr('font-weight', 600)
+      .text(`${SLN_ROW_LO.a} · ${SLN_ROW_LO.y} · ${SLN_ROW_LO.ac.toFixed(3)}`);
+  hiG.append('text')
+      .attr('x', x(SLN_ROW_LO.y) + 12).attr('y', loLabY + 13)
+      .attr('fill', 'var(--text-3)').attr('font-size', 10)
+      .text('全曲最低');
+
+  /* 峰侧注解：三条纵向分带，自下而上  Δ 行 →「复兴期最高」→「艺人 · 年 · 值」。
+     ⚠️ 两个必须守住的约束（都是实拍 + 自动检测抓出来的）：
+       ① 窄屏横向空间会被压缩，靠「水平避让」不可靠（1440 不撞、478 就撞），
+          所以不同组一律**靠纵向分层**分开，步距按字号算死不重叠；
+       ② 谷底/峰顶都在图的上下边缘，注解放不下就只能往绘图区外挤 —— 但
+          **绝不能骑在引导线上**：最早的版本把「26 年间的振幅」放在线下方一行，
+          结果水平虚线正好从字中间穿过、还压在一个数据点上。
+          故把时长说明并进 Δ 这一行，整组一律排在线**上方**。 */
+  const yPeak  = y(SLN_PEAK.ac);
+  const yDelta = yPeak - 9;
+  const yKind  = yPeak - 26;
+  const yIdent = yPeak - 44;
+  hiG.append('text')
+      .attr('x', x(SLN_PEAK.y)).attr('y', yIdent)
+      .attr('text-anchor', 'end')
+      .attr('fill', SM.micro).attr('font-size', W < 560 ? 10 : 11).attr('font-weight', 600)
+      .text(`${SLN_PEAK.artist} · ${SLN_PEAK.y} · ${SLN_PEAK.ac.toFixed(3)}`);
+  hiG.append('text')
+      .attr('x', x(SLN_PEAK.y)).attr('y', yKind)
+      .attr('text-anchor', 'end')
+      .attr('fill', 'var(--text-3)').attr('font-size', 10)
+      .text('复兴期最高');
+
+  const midX = (x(SLN_ROW_LO.y) + x(SLN_PEAK.y)) / 2;
+  hiG.append('text')
+      .attr('x', midX).attr('y', yDelta)
+      .attr('text-anchor', 'middle')
+      .attr('fill', SM.micro).attr('font-size', W < 560 ? 11 : 12.5).attr('font-weight', 700)
+      .text('Δ +' + SLN_DELTA.toFixed(3) + ' · 26 年间的振幅');
+
+  /* 4.3.5 坐标轴 */
+  g.append('g').attr('transform', `translate(0,${ih})`)
+      .call(d3.axisBottom(x).tickValues(d3.range(1940, 2020, 10)).tickFormat(d3.format('d')).tickSize(4))
+      .call(sel => {
+        sel.selectAll('text').attr('fill', 'var(--text-3)').attr('font-size', 10);
+        sel.selectAll('line').attr('stroke', SM.grid);
+        sel.select('.domain').attr('stroke', SM.grid);
+      });
+
+  g.append('g')
+      .call(d3.axisLeft(y).tickValues([0, 0.25, 0.5, 0.75, 1]).tickSize(4))
+      .call(sel => {
+        sel.selectAll('text').attr('fill', 'var(--text-3)').attr('font-size', 10);
+        sel.selectAll('line').attr('stroke', SM.grid);
+        sel.select('.domain').attr('stroke', SM.grid);
+      });
+  g.selectAll('.domain').attr('stroke', SM.grid);
+
+  // 谷底十年的标签（放在 1980s 底纹的中心）
+  g.append('text')
+      .attr('x', x(1985)).attr('y', ih + 30)
+      .attr('text-anchor', 'middle')
+      .attr('fill', SM.micro).attr('font-size', 10)
+      .text('1980s 谷底');
+
+  /* 4.3.6 入场动画 + 兜底 */
+  const settleDeep = () => {
+    [dotG, connPath, meanLine, hiG].forEach(sel => sel.interrupt());
+    dotG.attr('opacity', 1);
+    connPath.attr('opacity', 1);
+    meanLine.attr('opacity', 1);
+    hiG.attr('opacity', 1);
+  };
+
+  if (isIntro && !reduceMotion){
+    playedIntroDeep = true;
+    dotG.attr('opacity', 0)
+        .transition().duration(520).ease(d3.easeCubicOut).attr('opacity', 1);
+    connPath.attr('opacity', 0)
+        .transition().delay(160).duration(420).attr('opacity', 1);
+    meanLine.attr('opacity', 0)
+        .transition().delay(360).duration(520).ease(d3.easeCubicOut).attr('opacity', 1);
+    hiG.attr('opacity', 0)
+        .transition().delay(700).duration(460).ease(d3.easeCubicOut).attr('opacity', 1);
+    setTimeout(settleDeep, CFG.animMs + 900);
+    setTimeout(settleDeep, 2600);
+  } else {
+    settleDeep();
+  }
+}
+
+/* ── 4.4 Tooltip 定位（与 Phase 1/2 同一套约束，含左右双向夹取）─────
+   抽成函数是因为本阶段有 11 个 hover 源（10 个面板 + 44 个散点），
+   逐个复制粘贴定位逻辑必然漂移。 */
+function placeTooltip(ev){
+  const pad = 16;
+  const tw  = tooltip.offsetWidth;
+  const th  = tooltip.offsetHeight;
+
+  let left = ev.clientX + pad;
+  let top  = ev.clientY - th / 2;
+  if (left + tw > window.innerWidth - 8) left = ev.clientX - tw - pad;
+  left = Math.max(8, Math.min(left, window.innerWidth - tw - 8));
+  if (top < 8)                          top  = 8;
+  if (top + th > window.innerHeight - 8) top = window.innerHeight - th - 8;
+
+  tooltip.style.left = left + 'px';
+  tooltip.style.top  = top  + 'px';
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   4.5 · Phase 4 · era_quadrant（11 行，粒度 = 十年）
+        主图：斜线三段式漂流轨迹（X 反向 1→0，Y 正向 0→1，线宽 = 段距离）
+        副图：corr_ac_en 逐十年轨迹条（机制解释：共线性如何被绑死）
+   ═══════════════════════════════════════════════════════════════════════ */
+
+const spaceEl     = document.getElementById('chart-space');
+const spaceCorrEl = document.getElementById('chart-space-corr');
+
+let playedIntroSpace = false;
+let playedIntroCorr  = false;
+
+/* 三段式配色：与 Phase 1 已建立的语义对齐 ——
+   --warn 橙在本页已有「1940s 异常 / 断层」的既定含义，直接复用，
+   不再新增色相，避免同一颜色在不同图里表示不同东西。 */
+const SP = {
+  plateau : '#8E8E93',        // 高台期：中性灰（"没动"）
+  rupture : '#FF9F0A',        // 断层带：警示橙（与 Phase 1 的 1940s 同色族）
+  electric: '#5AC8FA',        // 电声常态：主数据蓝
+  grid    : 'var(--grid)',
+  ink     : '#e9e9ea',
+  ink2    : '#9aa0a6',
+  ink3    : '#6a7076'
+};
+/* 三段式的区间边界（用于背景色块与虚线框）。
+   横轴是反向量（1 在左、0 在右），所以"高台期"占据左侧高位区。 */
+const SP_ZONE = {
+  plateau : { lo: 0.20, hi: 1.00 },
+  rupture : { lo: 0.42, hi: 0.72 },
+  electric: { lo: 0.00, hi: 0.45 }
+};
+
+/* 相邻段查表：给 tooltip 用（hover 某年 → 显示它两侧的断层距离） */
+const segOf = (from, to) => EQ_SEG.find(s => s.from === from && s.to === to);
+const rowOf = dec => EQ_ROWS.find(r => r.dec === dec);
+const driftOf = dec => EQ_DRIFT.find(d => d.dec === dec);
+
+/* 线宽映射：speed ∈ [0,1] → [1px, 8px]。
+   1850s→1960s 与 1960s→1970s 的 speed 分别为 0.9902 / 1.0000，
+   映射后是 7.93 / 8.00 —— 两段几乎等粗，符合"断层不是单段而是一对"的结论。 */
+const SP_WMIN = 1, SP_WMAX = 8;
+const widthOf = sp => SP_WMIN + sp * (SP_WMAX - SP_WMIN);
+
+/* ── 4.5.1 主图：斜线漂流 ─────────────────────────────────────────── */
+function renderSpace(){
+  const W = spaceEl.clientWidth;
+  if (!W) return;
+  const isIntro = !playedIntroSpace;
+
+  d3.select(spaceEl).selectAll('svg').remove();
+  const loadingEl = document.getElementById('space-loading');
+  if (loadingEl) loadingEl.remove();
+
+  /* 尺寸与边距。左侧留得多一点，因为 X 轴要放「原声度 1 → 0」的反向刻度标签；
+     底部留两行，一行给轴标题、一行给"三段式"图例说明。 */
+  const wide  = W >= 820;
+  const H     = wide ? 470 : 400;
+  const M     = { t: 46, r: wide ? 30 : 20, b: 58, l: wide ? 62 : 50 };
+  const iw    = W - M.l - M.r;
+  const ih    = H - M.t - M.b;
+
+  const svg = d3.select(spaceEl).append('svg')
+    .attr('viewBox', '0 0 ' + W + ' ' + H)
+    .attr('width', W).attr('height', H)
+    .attr('role', 'img')
+    .attr('aria-label', '11 个十年在原声度与能量平面上的漂移轨迹，线宽编码相邻年代的移动距离');
+
+  const g = svg.append('g').attr('transform', 'translate(' + M.l + ',' + M.t + ')');
+
+  /* ── 比例尺 ──────────────────────────────────────────────────────
+     X：原声度 **反向**（1 在左、0 在右）—— 代表"原声衰减"的阅读方向，
+        于是整条轨迹从左上（高原声低能量）滑向右下（低原声高能量）。
+     Y：能量 **正向**（0 在下、1 在上）。
+     两轴都锁 [0,1] 且等长 —— 圆才会是圆，距离才有可比性。 */
+  const span = Math.min(iw, ih);
+  const padX = (iw - span) / 2, padY = (ih - span) / 2;
+  const x = d3.scaleLinear().domain([1, 0]).range([padX, padX + span]);
+  const y = d3.scaleLinear().domain([0, 1]).range([ih - padY, padY]);
+  const X = d => x(d.ac);
+  const Y = d => y(d.en);
+
+  const gridG = g.append('g');
+  const zoneG = g.append('g');
+  const bandG = g.append('g');
+  const segG  = g.append('g');
+  const ptG   = g.append('g');
+  const axG   = g.append('g');
+
+  /* ── 三段式背景：极淡色块 ────────────────────────────────────────
+     不画象限网格线（探查已证明象限是伪结构），改为按"漂移节奏"分区。
+     色块沿 X 轴方向铺（因为漂移的主方向就是 X 方向的衰减）。 */
+  [['plateau', 0], ['rupture', 1], ['electric', 2]].forEach(([z]) => {
+    const Z = SP_ZONE[z];
+    zoneG.append('rect')
+      .attr('x', x(Math.max(Z.hi, Z.lo))).attr('y', 0)
+      .attr('width', Math.abs(x(Z.lo) - x(Z.hi))).attr('height', ih)
+      .attr('fill', SP[z]).attr('opacity', z === 'rupture' ? 0.075 : 0.032);
+  });
+  /* 断层带：加一层虚线框强化（它是全图的主角） */
+  const RZ = SP_ZONE.rupture;
+  zoneG.append('rect')
+    .attr('x', x(RZ.hi)).attr('y', 0)
+    .attr('width', Math.abs(x(RZ.lo) - x(RZ.hi))).attr('height', ih)
+    .attr('fill', 'none').attr('stroke', SP.rupture)
+    .attr('stroke-width', 1).attr('stroke-dasharray', '4 4').attr('opacity', .45);
+
+  /* ── 网格（只做 [0,1] 的 0.2 刻度，弱到几乎看不见）─────────────── */
+  [0, .2, .4, .6, .8, 1].forEach(v => {
+    gridG.append('line')
+      .attr('x1', x(v)).attr('x2', x(v)).attr('y1', 0).attr('y2', ih)
+      .attr('stroke', SP.grid).attr('stroke-width', .5);
+    gridG.append('line')
+      .attr('x1', 0).attr('x2', iw).attr('y1', y(v)).attr('y2', y(v))
+      .attr('stroke', SP.grid).attr('stroke-width', .5);
+  });
+
+  /* ── 误差椭圆：σ/√n（均值的标准误）────────────────────────────────
+     ⚠️ 口径：不是个体离散度 σ。用 σ 时 9/11 个十年会越出 [0,1]；
+        σ/√n 实测最大半径 0.0053，11/11 全部不越界。
+     椭圆半径极小（约 4–7px），因此加一层半透明描边让它可见。 */
+  const ellG = bandG.selectAll('ellipse').data(EQ_ROWS).enter()
+    .append('ellipse')
+      .attr('cx', X).attr('cy', Y)
+      .attr('rx', d => Math.abs(x(d.ac - d.sdac / Math.sqrt(d.n)) - x(d.ac + d.sdac / Math.sqrt(d.n))) / 2)
+      .attr('ry', d => Math.abs(y(d.en + d.sden / Math.sqrt(d.n)) - y(d.en - d.sden / Math.sqrt(d.n))) / 2)
+      .attr('fill', d => SP[d.partial ? 'plateau' : driftOf(d.dec).zone])
+      .attr('fill-opacity', .18)
+      .attr('stroke', d => SP[driftOf(d.dec).zone])
+      .attr('stroke-opacity', .5).attr('stroke-width', .8);
+
+  /* ── 段：线宽编码距离 ────────────────────────────────────────────
+     用插值点串成一条 path，这样可以对整条线做「画笔」入场动画；
+     段与段之间靠 stroke-width 的突变区分（而不是断开），视觉上仍是连贯轨迹。 */
+  const segLine = d3.line()
+    .x(d => x(d.ac)).y(d => y(d.en)).curve(d3.curveLinear);
+
+  /* 注意：这里刻意 **不** 用嵌套 selection 的数据广播形式
+     （Phase 3 踩过的坑：对多元素 selection 直接 .data(数组) 会把整份数组
+     广播进每一个元素）。每段单独 append 一次，父元素不带数据。 */
+  const segPaths = [];
+  EQ_SEG.forEach((s, i) => {
+    const a = rowOf(s.from), b = rowOf(s.to);
+    const isRup = (s.from === 1950 || s.from === 1960);
+    const p = segG.append('path')
+      .datum([a, b])
+      .attr('d', segLine)
+      .attr('fill', 'none')
+      .attr('stroke', isRup ? SP.rupture : SP.electric)
+      .attr('stroke-width', widthOf(s.speed))
+      .attr('stroke-linecap', 'round')
+      .attr('stroke-opacity', isRup ? .95 : .58);
+    segPaths.push(p);
+    /* 断层段加一层柔光（低透明度加粗同路径），让"最粗"在暗底上更跳 */
+    if (isRup){
+      segG.insert('path', () => p.node())
+        .datum([a, b]).attr('d', segLine).attr('fill', 'none')
+        .attr('stroke', SP.rupture).attr('stroke-width', widthOf(s.speed) + 5)
+        .attr('stroke-opacity', .12).attr('stroke-linecap', 'round');
+    }
+  });
+
+  /* ── 高台期"抱团"虚线框（不连线：四点极差仅 0.069 × 0.052）────── */
+  const plateauRows = EQ_ROWS.filter(r => r.dec <= 1950);
+  const bx0 = Math.min(...plateauRows.map(X)), bx1 = Math.max(...plateauRows.map(X));
+  const by0 = Math.min(...plateauRows.map(Y)), by1 = Math.max(...plateauRows.map(Y));
+  const bPad = 16;
+  segG.append('rect')
+    .attr('x', bx0 - bPad).attr('y', by0 - bPad)
+    .attr('width', (bx1 - bx0) + 2 * bPad).attr('height', (by1 - by0) + 2 * bPad)
+    .attr('fill', 'none').attr('stroke', SP.plateau)
+    .attr('stroke-width', 1).attr('stroke-dasharray', '3 3').attr('opacity', .5);
+  /* 标题放在虚线框【正下方】（框外），避免与框内 4 个十年标签抢位 */
+  const plateTitleY = by1 + bPad + 18;
+  const plateTitleX = bx0 - bPad;
+  const PLATE_TITLE = '高台期 · 30 年指纹几乎没动';
+  segG.append('text')
+    .attr('x', plateTitleX).attr('y', plateTitleY)
+    .attr('fill', SP.ink2).attr('font-size', 11)
+    .text(PLATE_TITLE);
+
+  /* ── 段距离标注（只标两段断层，其余靠线宽自己说话）───────────────
+     两段各自沿法向偏移会互相撞、也会撞上十年标签与断层注释。
+     改为：合并成【一个】双行块，放在两段中部上方的空白带里，
+           用细引线连回各自段的中点。位置一旦固定，也登记进 ANNO_BOXES。 */
+  const SP_RUP = [segOf(1950, 1960), segOf(1960, 1970)];
+  const midOf = s => {
+    const a = rowOf(s.from), b = rowOf(s.to);
+    return [ (X(a) + X(b)) / 2, (Y(a) + Y(b)) / 2 ];
+  };
+  const segNoteBox = (() => {
+    const mids = SP_RUP.map(midOf);
+    const ax = (mids[0][0] + mids[1][0]) / 2;      // 两段中点的水平中心
+    const ay = Math.min(mids[0][1], mids[1][1]);   // 取更高的一段
+    const boxW = 186, lineH = 15;                  // lineH ≥ 14 才不会两行贴脸
+    const bx = ax - boxW / 2, by = ay - 46;        // 上移到空白带
+    /* y0/y1 = 整个双行块的真实外框，必须覆盖两行文字（不是 by ± lineH） */
+    return { x0: bx, x1: bx + boxW, y0: by - lineH, y1: by + lineH,
+             cx: ax, cy: by, boxW, lineH };
+  })();
+
+  /* 引线：从两段中点各拉一条细虚线到标注块下沿，避免"标注悬空看不懂" */
+  SP_RUP.forEach(s => {
+    const [mx, my] = midOf(s);
+    segG.append('line')
+      .attr('x1', mx).attr('y1', my)
+      .attr('x2', mx).attr('y2', segNoteBox.y1 - 1)
+      .attr('stroke', SP.rupture).attr('stroke-width', .8)
+      .attr('stroke-dasharray', '2 3').attr('stroke-opacity', .45);
+  });
+
+  /* 标注块：两行（各自段距离 + 路径份额），前导色点区分是哪一段 */
+  const noteG = segG.append('g').attr('class', 'sp-rupnote');
+  SP_RUP.forEach((s, i) => {
+    /* 第 0 行基线 = cy - 3；第 1 行基线 = cy + lineH - 3（行距 15px） */
+    const y = i === 0 ? segNoteBox.cy - 3 : segNoteBox.cy + segNoteBox.lineH - 3;
+    const txt = 'd ' + s.d.toFixed(4) + '  ·  ' + s.share.toFixed(1) + '%';
+    noteG.append('circle')
+      .attr('cx', segNoteBox.x0 + 6).attr('cy', y - 4).attr('r', 2.6)
+      .attr('fill', SP.rupture).attr('fill-opacity', i === 0 ? .55 : 1);
+    noteG.append('text')
+      .attr('x', segNoteBox.x0 + 14).attr('y', y)
+      .attr('fill', i === 0 ? SP.ink2 : SP.rupture)
+      .attr('font-size', 11).attr('font-weight', i === 0 ? 400 : 500)
+      .text(txt);
+  });
+
+  /* ── 点：11 个十年 ─────────────────────────────────────────────── */
+  /* 半径：√n 映射（n 差 9.85 倍，裸 n 会让 2020s 小到看不见）*/
+  const nMin = Math.min(...EQ_ROWS.map(r => r.n)), nMax = Math.max(...EQ_ROWS.map(r => r.n));
+  const rOf  = d => 4.2 + 2.4 * (Math.sqrt(d.n) - Math.sqrt(nMin)) / (Math.sqrt(nMax) - Math.sqrt(nMin));
+
+  const dots = ptG.selectAll('circle.sp-dot').data(EQ_ROWS).enter()
+    .append('circle')
+      .attr('class', 'sp-dot')
+      .attr('cx', X).attr('cy', Y).attr('r', rOf)
+      .attr('fill', d => {
+        if (d.dec === 1940) return SP.rupture;          // 离群点：呼应 Phase 1 橙色警告
+        if (d.partial) return '#181818';                // 残缺十年：空心
+        return SP[driftOf(d.dec).zone];
+      })
+      .attr('stroke', d => {
+        if (d.dec === 1940) return '#fff';
+        if (d.partial) return SP.plateau;
+        return '#121212';
+      })
+      .attr('stroke-width', d => d.partial ? 1.6 : 1.4)
+      .attr('stroke-dasharray', d => d.partial ? '2.5 2.5' : null)
+      .style('cursor', 'pointer');
+
+  /* 1940s 额外一圈橙色环 —— 「离群点」必须一眼可辨 */
+  ptG.append('circle')
+    .attr('cx', X(rowOf(1940))).attr('cy', Y(rowOf(1940)))
+    .attr('r', rOf(rowOf(1940)) + 5)
+    .attr('fill', 'none').attr('stroke', SP.rupture)
+    .attr('stroke-width', 1.2).attr('stroke-opacity', .7);
+
+  /* ── 十年标签：真正的碰撞避让 ────────────────────────────────────
+     轨迹的中后段（1980s/1990s/2000s/2010s/2020s）点距极小（最小 0.0124 单位
+     ≈ 3px），固定的 "+10px 右上" 会让 5 个标签叠在一起；
+     高台期的 4 点同样挤在 0.069×0.052 的小框内。所以必须做真实避让。
+
+     策略：对每个点依次尝试 8 个候选方位（先近后远），
+           取第一个与「已放置标签 + 所有数据点 + 已知注释块」都不重叠的位置；
+           8 个方位全撞则退到"最远距离最小"的那个（保证一定有位置）。 */
+  const ANNO_BOXES = [
+    /* 断层带三行注释（现在位于 1960s 点右下方空白区，见下方 axG 那三行）——
+       标签避让时必须把它们也当成障碍物，否则十年标签会压上注释文字。
+       宽度按真实中文宽度算（1.0em/字），不能拍脑袋给 190。 */
+    (() => {
+      const x0 = X(rowOf(1960)) + 30;
+      const t = '断层带 · 1960s';
+      const w = t.split('').reduce((s, c) => s + (c.charCodeAt(0) > 0x2E7F ? 12 : 6.6), 0) * 1.02;
+      const y = Y(rowOf(1960)) + 40;
+      return { x0, x1: x0 + w, y0: y - 13, y1: y + 2 };
+    })(),
+    (() => {
+      const x0 = X(rowOf(1960)) + 30;
+      const t = '扁平台 = 断层在十年桶内的投影';
+      const w = t.split('').reduce((s, c) => s + (c.charCodeAt(0) > 0x2E7F ? 11 : 6.2), 0) * 1.02;
+      const y = Y(rowOf(1960)) + 40 + 15;
+      return { x0, x1: x0 + w, y0: y - 11, y1: y + 2 };
+    })(),
+    (() => {
+      const x0 = X(rowOf(1960)) + 30;
+      const t = '1964→1966 两年暴跌 −0.17';
+      const w = t.split('').reduce((s, c) => s + (c.charCodeAt(0) > 0x2E7F ? 11 : 6.2), 0) * 1.02;
+      const y = Y(rowOf(1960)) + 40 + 30;
+      return { x0, x1: x0 + w, y0: y - 11, y1: y + 2 };
+    })(),
+    /* 高台期虚线框的标题（现在位于虚线框正下方） */
+    { x0: plateTitleX, x1: plateTitleX + 186,
+      y0: plateTitleY - 11, y1: plateTitleY + 2 },
+    /* 断层双段距离标注块（上面刚算出来的位置） */
+    segNoteBox
+  ];
+
+  const LAB_FS = 11;
+  const labW = t => t.length * LAB_FS * 0.58;
+
+  /* 轨迹线段本身也是障碍物 —— 文字压在线宽 8px 的橙色断层段上完全读不出。
+     把每段按它的实际粗细膨胀成一条矩形带（轴对齐包围盒已足够，
+     因为轨迹是单调斜线，AABB 会略微保守，正好留出安全边距）。 */
+  const SEG_BANDS = EQ_SEG.map(s => {
+    const a = rowOf(s.from), b = rowOf(s.to);
+    const x1 = X(a), y1 = Y(a), x2 = X(b), y2 = Y(b);
+    const hw = widthOf(s.speed) / 2 + 2;   // 半线宽 + 2px 呼吸位
+    return { x0: Math.min(x1, x2) - hw, x1: Math.max(x1, x2) + hw,
+             y0: Math.min(y1, y2) - hw, y1: Math.max(y1, y2) + hw };
+  });
+  /* 12 个候选方位：先近后远。点密集处靠"远方位"脱困。
+     顺序 = 由近及远，cost 相同时先到先得。 */
+  const DIRS = [
+    [ 10,  -6, 'start'], [-10,  -6, 'end'],
+    [ 10,  13, 'start'], [-10,  13, 'end'],
+    [  0, -12, 'middle'], [  0,  17, 'middle'],
+    [ 13, -19, 'start'], [-13, -19, 'end'],
+    [ 22,  -6, 'start'], [-22,  -6, 'end'],
+    [ 22,  13, 'start'], [-22,  13, 'end']
+  ];
+
+  const placed = [];   // 已放置的标签框
+  const dotBoxOf = r => ({
+    x0: X(r) - rOf(r) - 5, x1: X(r) + rOf(r) + 5,
+    y0: Y(r) - rOf(r) - 5, y1: Y(r) + rOf(r) + 5
+  });
+  const dotBoxes = EQ_ROWS.map(dotBoxOf);
+  const boxOf = (cx, cy, w, anch) => {
+    const x0 = anch === 'middle' ? cx - w / 2 : (anch === 'end' ? cx - w : cx);
+    return { x0, x1: x0 + w, y0: cy - LAB_FS, y1: cy + 2, cx, cy, anch };
+  };
+
+  /* ── 高台期四点：不交给通用避让，改用「整簇左对齐竖排」──────────────
+     1920s/1930s/1940s/1950s 四点挤在 0.069(ac) × 0.052(en) 的极小框里，
+     相邻点的标签无论怎么摆都会互相压、或压到旁边那条 8px 粗的橙色断层段。
+     通用算法在这种"零自由空间"下必然失败（每 900/478px 必压点）。
+
+     正解：把这 4 个标签当成【一个整体】，在簇的左侧竖排成一列，
+     行距固定 15px，整体垂直居中于簇心；再从每个标签拉一条细引线回自己的点。
+     这样 4 个标签彼此永不重叠、也完全避开轨迹线。 */
+  const clusterRows = EQ_ROWS.filter(r => r.dec <= 1950);
+  const clLeft  = Math.min(...clusterRows.map(X)) - 42;   // 簇左侧留白带
+  const clMidY  = (Math.min(...clusterRows.map(Y)) + Math.max(...clusterRows.map(Y))) / 2;
+  const CL_GAP  = 15;
+  const clTop   = clMidY - (clusterRows.length - 1) * CL_GAP / 2;
+  clusterRows.forEach((r, i) => {
+    const txt = r.dec + 's';
+    const cy = clTop + i * CL_GAP;
+    const box = { x0: clLeft, x1: clLeft + labW(txt), y0: cy - LAB_FS, y1: cy + 2,
+                  cx: clLeft, cy, anch: 'start' };
+    placed.push(box);
+    /* 引线：从标签右端连回自己的点 */
+    segG.append('line')
+      .attr('x1', clLeft + labW(txt) + 2).attr('y1', cy - 4)
+      .attr('x2', X(r) - 1).attr('y2', Y(r) + 3)
+      .attr('stroke', r.dec === 1940 ? SP.rupture : SP.ink3)      // 1940s 仍然保留橙线
+      .attr('stroke-width', .7).attr('stroke-dasharray', '2 3')
+      .attr('stroke-opacity', r.dec === 1940 ? .6 : .38);
+    ptG.append('text')
+      .attr('class', 'sp-lab')
+      .attr('x', box.x0).attr('y', box.cy)
+      .attr('text-anchor', 'start')
+      .attr('fill', r.dec === 1940 ? SP.rupture : SP.ink2)
+      .attr('font-size', LAB_FS)
+      .attr('font-weight', r.dec === 1940 ? 500 : 400)
+      .text(txt);
+  });
+
+  /* 后段五点（1970s…2020s）彼此也很近，但方向单一，交给通用避让即可 */
+  EQ_ROWS.filter(r => r.dec > 1950).forEach(r => {
+    const txt = r.dec + 's';
+    const w = labW(txt);
+    /* ⚠ 自身那个点不算障碍物 —— 标签本来就是贴着点放的，
+       否则算法会为了"躲开自己"把标签推到很远的荒唐位置。
+       要躲的是【别的点】、【已放的标签】、【注释块】。 */
+    const own = dotBoxOf(r);
+    const textObs = placed.concat(ANNO_BOXES);
+    const dotObs  = dotBoxes.filter(b => b !== own);
+    const lineObs = SEG_BANDS;
+    const costOf = box => {
+      let c = 0;
+      /* 文字 × 文字 / 文字 × 注释：膨胀 2.5px —— 紧贴(0~2px 间隙)视觉上同样糊 */
+      for (const o of textObs){
+        const P = 2.5;
+        const ox = Math.min(box.x1 + P, o.x1 + P) - Math.max(box.x0 - P, o.x0 - P);
+        const oy = Math.min(box.y1 + P, o.y1 + P) - Math.max(box.y0 - P, o.y0 - P);
+        if (ox > 0 && oy > 0) c += ox * oy;
+      }
+      /* 文字 × 别的数据点：不膨胀，但一旦压上就加重罚（点在暗底上被字盖住 = 信息丢失） */
+      for (const o of dotObs){
+        const ox = Math.min(box.x1, o.x1) - Math.max(box.x0, o.x0);
+        const oy = Math.min(box.y1, o.y1) - Math.max(box.y0, o.y0);
+        if (ox > 0 && oy > 0) c += ox * oy * 6;
+      }
+      /* 文字 × 轨迹线段：压在最粗的断层段上代价最高（乘 8），
+         细段（1px）压上尚可忍，故按该段线宽加权。 */
+      for (let i = 0; i < lineObs.length; i++){
+        const o = lineObs[i];
+        const ox = Math.min(box.x1, o.x1) - Math.max(box.x0, o.x0);
+        const oy = Math.min(box.y1, o.y1) - Math.max(box.y0, o.y0);
+        if (ox > 0 && oy > 0){
+          const wt = widthOf(EQ_SEG[i].speed);
+          c += ox * oy * (2 + wt * 0.9);
+        }
+      }
+      return c;
+    };
+    let best = null, bestCost = Infinity;
+    /* 第一轮：12 个常规方位（先近后远），够用就走 */
+    for (const [dx, dy, anch] of DIRS){
+      const box = boxOf(X(r) + dx, Y(r) + dy, w, anch);
+      const c = costOf(box) + Math.hypot(dx, dy) * 0.6;
+      if (c < bestCost){ bestCost = c; best = box; if (c <= 0) break; }
+    }
+    /* 第二轮（兜底）：常规方位全撞时，绕点做环形细搜。
+       半径 26→86px、每圈 24 个角度；任一位零重叠立即采用，
+       否则取"重叠面积最小"的那个（保证一定有解，且不会飞出画布太远）。 */
+    if (bestCost > 0){
+      for (let rad = 24; rad <= 190 && bestCost > 0; rad += 6){
+        for (let k = 0; k < 40; k++){
+          const a = (k / 40) * Math.PI * 2;
+          const dx = Math.cos(a) * rad, dy = Math.sin(a) * rad * 0.55;  // 竖向压扁，贴合文字行高
+          const anch = dx >= 0 ? 'start' : 'end';
+          const box = boxOf(X(r) + dx, Y(r) + dy, w, anch);
+          /* 越出绘图区边界的位置直接否决，避免标签跑出画布 */
+          if (box.x0 < 2 || box.x1 > iw - 2 || box.y0 < 2 || box.y1 > ih - 2) continue;
+          const c = costOf(box) + rad * 0.18;   // 距离惩罚压低：宁可远一点也不能压点/压线
+          if (c < bestCost){ bestCost = c; best = box; }
+        }
+      }
+    }
+    placed.push(best);
+    /* 用引线把"被推远"的标签连回它的点，避免读者认错归属 */
+    const far = Math.hypot(best.cx - X(r), best.cy - Y(r));
+    if (far > 22){
+      segG.append('line')
+        .attr('x1', X(r)).attr('y1', Y(r))
+        .attr('x2', best.anch === 'middle' ? best.cx : (best.anch === 'end' ? best.x1 : best.x0))
+        .attr('y2', best.cy - 2)
+        .attr('stroke', SP.ink3).attr('stroke-width', .7)
+        .attr('stroke-dasharray', '2 3').attr('stroke-opacity', .5);
+    }
+    ptG.append('text')
+      .attr('class', 'sp-lab')
+      .attr('x', best.x0).attr('y', best.cy)
+      .attr('text-anchor', 'start')
+      .attr('fill', r.dec === 2020 ? SP.ink3 : (r.dec === 1940 ? SP.rupture : SP.ink2))
+      .attr('font-size', LAB_FS)
+      .attr('font-weight', (r.dec === 1960 || r.dec === 1940) ? 500 : 400)
+      .text(txt);
+  });
+
+  /* ── 时间箭头：只画两端（起点空心、终点实心），不每段都画 ──────── */
+  const first = EQ_ROWS[0], last = EQ_ROWS[EQ_ROWS.length - 1];
+  const ang = Math.atan2(Y(last) - Y(first), X(last) - X(first));
+  const ax0 = X(first) + Math.cos(ang) * (rOf(first) + 6);
+  const ay0 = Y(first) + Math.sin(ang) * (rOf(first) + 6);
+  svg.append('defs').append('marker')
+    .attr('id', 'sp-arrow').attr('viewBox', '0 0 10 10')
+    .attr('refX', 8).attr('refY', 5)
+    .attr('markerWidth', 5).attr('markerHeight', 5)
+    .attr('orient', 'auto-start-reverse')
+  .append('path').attr('d', 'M 0 0 L 10 5 L 0 10 z').attr('fill', SP.electric);
+  g.append('line')
+    .attr('x1', ax0).attr('y1', ay0).attr('x2', X(last)).attr('y2', Y(last))
+    .attr('stroke', SP.electric).attr('stroke-width', 1)
+    .attr('stroke-dasharray', '5 5').attr('stroke-opacity', .22)
+    .attr('marker-end', 'url(#sp-arrow)');
+
+  /* ── 轴 ────────────────────────────────────────────────────────── */
+  axG.append('line').attr('x1', 0).attr('x2', iw).attr('y1', ih).attr('y2', ih)
+    .attr('stroke', 'var(--line)').attr('stroke-width', 1);
+  axG.append('line').attr('x1', 0).attr('x2', 0).attr('y1', 0).attr('y2', ih)
+    .attr('stroke', 'var(--line)').attr('stroke-width', 1);
+
+  [0, .2, .4, .6, .8, 1].forEach(v => {
+    axG.append('text').attr('x', x(v)).attr('y', ih + 18)
+      .attr('text-anchor', 'middle').attr('fill', SP.ink3)
+      .attr('font-size', 11).text(v.toFixed(1));
+    axG.append('text').attr('x', -10).attr('y', y(v) + 4)
+      .attr('text-anchor', 'end').attr('fill', SP.ink3)
+      .attr('font-size', 11).text(v.toFixed(1));
+  });
+
+  axG.append('text').attr('x', iw / 2).attr('y', ih + 46)
+    .attr('text-anchor', 'middle').attr('fill', SP.ink2).attr('font-size', 12)
+    .text('原声度 acousticness　1 ← 衰减方向 → 0');
+  axG.append('text').attr('x', -ih / 2).attr('y', -40)
+    .attr('transform', 'rotate(-90)').attr('text-anchor', 'middle')
+    .attr('fill', SP.ink2).attr('font-size', 12)
+    .text('能量 energy　0 → 1');
+
+  /* ── 断层带强注释 ────────────────────────────────────────────────
+     位置：放在 1960s 点的【右下方空白区】（低原声度、低能量那一角没有任何点），
+     完全不压轨迹本身。上一版放在 1960s 右侧 → 正好压在 1960s→1970s 的
+     粗线段与 1970s 标签上，肉眼完全读不出。 */
+  const r60 = rowOf(1960);
+  const ANNO_X = X(r60) + 30;
+  const ANNO_Y = Y(r60) + 40;          // 下移到轨迹下方，但不贴画布底边
+  axG.append('text')
+    .attr('x', ANNO_X).attr('y', ANNO_Y)
+    .attr('fill', SP.rupture).attr('font-size', 12).attr('font-weight', 500)
+    .text('断层带 · 1960s');
+  axG.append('text')
+    .attr('x', ANNO_X).attr('y', ANNO_Y + 15)
+    .attr('fill', SP.ink2).attr('font-size', 11)
+    .text('扁平台 = 断层在十年桶内的投影');
+  axG.append('text')
+    .attr('x', ANNO_X).attr('y', ANNO_Y + 30)
+    .attr('fill', SP.ink3).attr('font-size', 11)
+    .text('1964→1966 两年暴跌 −0.17');
+  /* 一条细引线从注释块指回 1960s 的点，避免读者找不到被注释的对象 */
+  axG.append('line')
+    .attr('x1', ANNO_X + 4).attr('y1', ANNO_Y - 4)
+    .attr('x2', X(r60) + 7).attr('y2', Y(r60) + 7)
+    .attr('stroke', SP.rupture).attr('stroke-width', .8)
+    .attr('stroke-dasharray', '2 3').attr('stroke-opacity', .5);
+
+  /* ── hover 命中层 + tooltip ────────────────────────────────────── */
+  ptG.selectAll('.sp-hit').data(EQ_ROWS).enter()
+    .append('circle')
+      .attr('class', 'sp-hit')
+      .attr('cx', X).attr('cy', Y).attr('r', 20)
+      .attr('fill', 'transparent')
+      .style('cursor', 'pointer')
+      .on('mouseenter', function(ev, d){
+        tooltip.innerHTML = spaceTip(d);
+        tooltip.classList.add('on');
+        placeTooltip(ev);
+        d3.select(this.previousSibling).attr('r', rOf(d) + 3);
+      })
+      .on('mousemove', ev => placeTooltip(ev))
+      .on('mouseleave', function(ev, d){
+        hideTooltip();
+        d3.select(this.previousSibling).attr('r', rOf(d));
+      });
+
+  /* ── 入场动画 ──────────────────────────────────────────────────── */
+  const reduceMotion =
+    window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  const settleSpace = () => {
+    [...segPaths, dots].forEach(sel => sel.interrupt());
+    segPaths.forEach(p => p.attr('stroke-dasharray', null).attr('stroke-dashoffset', null));
+    ellG.attr('opacity', 1);
+    dots.attr('opacity', 1);
+  };
+
+  if (isIntro && !reduceMotion){
+    playedIntroSpace = true;
+    ellG.attr('opacity', 0)
+        .transition().duration(700).delay(600).ease(d3.easeCubicOut).attr('opacity', 1);
+    dots.attr('opacity', 0)
+        .transition().duration(600).delay(760).ease(d3.easeCubicOut).attr('opacity', 1);
+    /* 轨迹按时间顺序逐段"画出"：每段独立 dash 动画，制造"漂流"的推进感 */
+    EQ_SEG.forEach((s, i) => {
+      const p = segPaths[i];
+      const len = p.node().getTotalLength();
+      p.attr('stroke-dasharray', len + ' ' + len)
+       .attr('stroke-dashoffset', len)
+       .transition().delay(120 + i * 150).duration(420).ease(d3.easeCubicOut)
+       .attr('stroke-dashoffset', 0)
+       .on('end', () => p.attr('stroke-dasharray', null).attr('stroke-dashoffset', null));
+    });
+    setTimeout(settleSpace, CFG.animMs + 900);
+    setTimeout(settleSpace, 3400);
+  } else {
+    settleSpace();
+  }
+}
+
+/* ── 4.5.2 主图 tooltip：1940s/2020s 特殊，其余给"两侧段距离" ────────
+   用户明确要求：hover 1960s 必须显示它与 1950s / 1970s 的断层距离。 */
+function spaceTip(d){
+  const z  = driftOf(d.dec);
+  const zL = { plateau: '高台期', rupture: '断层带', electric: '电声常态' }[z.zone];
+  const prev = segOf(d.dec - 10, d.dec);
+  const next = segOf(d.dec, d.dec + 10);
+
+  const row = (k, v, cls) =>
+    '<div class="tt-r' + (cls ? ' ' + cls : '') + '"><span class="k">' + k + '</span>' +
+    '<span class="v">' + v + '</span></div>';
+
+  let h = '<div class="tt-h"><span>' + d.dec + 's</span>' +
+          '<span class="tt-n">n = ' + fmtNum(d.n) + '</span></div>';
+  h += row('原声度 ac', fmt4(d.ac));
+  h += row('能量 en', fmt4(d.en));
+  h += row('是否原声主导', d.ac >= 0.5 ? '是（ac ≥ 0.5）' : '否（ac &lt; 0.5）');
+  h += row('段位', zL, d.dec === 1960 ? 'warn' : '');
+
+  /* 两侧段距离 —— 这是本 tooltip 的核心信息 */
+  if (prev) h += row('← 自 ' + (d.dec - 10) + 's', fmt4(prev.d) + '　占 ' + prev.share.toFixed(1) + '%');
+  if (next) h += row('→ 至 ' + (d.dec + 10) + 's', fmt4(next.d) + '　占 ' + next.share.toFixed(1) + '%');
+
+  /* 1960s 专属：把两段断层并列，直接给出"合计占比" */
+  if (d.dec === 1960){
+    h += '<div class="tt-note">⚡ 断层带：两侧合计占全世纪位移 ' +
+         (prev.share + next.share).toFixed(1) + '%</div>';
+  }
+  if (d.dec === 1940){
+    h += '<div class="tt-note">⚠ 离群点：距历史重心最远（双轴 z 达 ±1.3）</div>';
+  }
+  if (d.partial){
+    h += '<div class="tt-note">◌ 残缺十年，样本量仅为 2010s 的 10.3%</div>';
+  }
+  h += row('该十年内 ac↔en 相关', d.corr.toFixed(4), 'hi');
+  return h;
+}
+
+/* ── 4.5.3 副图：corr_ac_en 逐十年轨迹条 ────────────────────────────
+   主图讲"位置怎么飘"，副图讲"两轴关系怎么绑" ——
+   共线性不是天生的，是被"绑"出来的：1920s 近乎无关（点可自由散布），
+   2000s 强反相关（点被压成一条线）。 */
+function renderSpaceCorr(){
+  const W = spaceCorrEl.clientWidth;
+  if (!W) return;
+  const isIntro = !playedIntroCorr;
+
+  d3.select(spaceCorrEl).selectAll('svg').remove();
+  const loadingEl = document.getElementById('space-corr-loading');
+  if (loadingEl) loadingEl.remove();
+
+  const wide = W >= 820;
+  const H    = wide ? 240 : 268;
+  /* 右边距必须放得下「-0.7485」数值 + 引线 + 「峰值 −0.7485 · 绑定最紧」注解。
+     注解全文约 21 个全角字 ≈ 128px，加上数值标签 60px → 至少 200px 才放得开。
+     因此判据用【可用绘图宽度 iw】而不是窗口宽 W：
+     900px 窗口的 iw 只有 900-62-92=746，右距给 200 会把图压扁，
+     所以 900 也走"注解放右侧但缩短文案"的策略。 */
+  const M    = { t: 30, r: wide ? 250 : 132, b: 58, l: wide ? 62 : 50 };
+  const iw   = W - M.l - M.r;
+  const ih   = H - M.t - M.b;
+  const bh   = Math.min(13, ih / EQ_ROWS.length - 4);   // 条高
+
+  const svg = d3.select(spaceCorrEl).append('svg')
+    .attr('viewBox', '0 0 ' + W + ' ' + H)
+    .attr('width', W).attr('height', H)
+    .attr('role', 'img')
+    .attr('aria-label', '各十年内原声度与能量的相关系数逐年演变，从 1920s 的近零到 2000s 的负 0.75');
+
+  const g = svg.append('g').attr('transform', 'translate(' + M.l + ',' + M.t + ')');
+
+  /* 相关值域：全部为负（11/11 ≤ −0.1576），从 0 到 −0.8 */
+  const x = d3.scaleLinear().domain([0, -0.8]).range([0, iw]);
+  const y = d3.scalePoint().domain(EQ_ROWS.map(r => r.dec)).range([0, ih]).padding(0.35);
+
+  [0, -0.2, -0.4, -0.6, -0.8].forEach(v => {
+    g.append('line').attr('x1', x(v)).attr('x2', x(v)).attr('y1', 0).attr('y2', ih)
+      .attr('stroke', SP.grid).attr('stroke-width', .5);
+    g.append('text').attr('x', x(v)).attr('y', ih + 16)
+      .attr('text-anchor', 'middle').attr('fill', SP.ink3).attr('font-size', 11)
+      .text(v.toFixed(1));
+  });
+
+  /* 条形：负向延伸；峰值那一根用橙色（与主图的"断层/强调"同色族）。
+     ⚠️ 2000s 是峰值 −0.7485，但它是"最强绑定"，不是"断层" ——
+        故用 --accent 亮蓝 + 加粗描边，而不是橙色，避免与主图断层语义串台。 */
+  const bars = g.selectAll('rect.sp-bar').data(EQ_ROWS).enter()
+    .append('rect')
+      .attr('class', 'sp-bar')
+      .attr('x', 0).attr('y', d => y(d.dec) - bh / 2)
+      .attr('height', bh)
+      .attr('width', d => Math.max(1, x(d.corr)))
+      .attr('fill', d => {
+        if (d.dec === 2000) return '#5AC8FA';
+        if (d.partial)      return '#3a3a3d';
+        return '#2d6f8f';
+      })
+      .attr('stroke', d => d.dec === 2000 ? '#e9e9ea' : 'none')
+      .attr('stroke-width', d => d.dec === 2000 ? 1 : 0);
+
+  /* 十年标签（左侧） */
+  g.selectAll('text.sp-cl').data(EQ_ROWS).enter()
+    .append('text')
+      .attr('class', 'sp-cl')
+      .attr('x', -10).attr('y', d => y(d.dec) + 4)
+      .attr('text-anchor', 'end')
+      .attr('fill', d => (d.dec === 2000 || d.partial) ? SP.ink : SP.ink2)
+      .attr('font-size', 11)
+      .attr('font-weight', d => d.dec === 2000 ? 500 : 400)
+      .text(d => d.dec + 's');
+
+  /* 数值（右侧） */
+  g.selectAll('text.sp-cv').data(EQ_ROWS).enter()
+    .append('text')
+      .attr('class', 'sp-cv')
+      .attr('x', d => x(d.corr) + 7).attr('y', d => y(d.dec) + 4)
+      .attr('fill', d => d.dec === 2000 ? '#5AC8FA' : SP.ink3)
+      .attr('font-size', 11)
+      .attr('font-weight', d => d.dec === 2000 ? 500 : 400)
+      .text(d => d.corr.toFixed(4));
+
+  /* 峰值注解：2000s
+     ⚠ 不能放在 y00 - bh/2 - 8（那是 2010s 那条的位置）——
+       副图 11 根条的间距只有 (ih/11)，往上一条就是别的十年。
+       改为：放在 2000s 条的【正右侧延长线上】（over-hang 到 M.r 预留的右边距里），
+       与数值标签 -0.7485 拉开 58px，两者都读得清。 */
+  const r00 = rowOf(2000);
+  const y00 = y(2000);
+  const r20 = rowOf(2020);
+  /* 判据：数值标签右端到画布右缘之间是否有 ≥170px 空位 */
+  const room = iw - x(r00.corr);
+  if (room >= 170){
+    /* 宽屏：横排挂在条尾右侧，文字逐字排在空位里 */
+    g.append('text').attr('x', x(r00.corr) + 12).attr('y', y00 + 4)
+      .attr('text-anchor', 'start').attr('fill', SP.ink).attr('font-size', 11)
+      .attr('font-weight', 500).text('峰值 ' + r00.corr.toFixed(4) + ' · 绑定最紧');
+    g.append('text').attr('x', x(r20.corr) + 12).attr('y', y(2020) + 4)
+      .attr('text-anchor', 'start').attr('fill', SP.rupture).attr('font-size', 11)
+      .text('回落至 ' + r20.corr.toFixed(4) + '　⚠ 仅 n=' + fmtNum(r20.n));
+    /* 短线把注解指回自己的条尾，避免读者认错归属 */
+    [[r00, SP.ink], [r20, SP.rupture]].forEach(([r, col]) => {
+      g.append('line')
+        .attr('x1', x(r.corr) + 4).attr('y1', y(r.dec) + 4)
+        .attr('x2', x(r.corr) + 10).attr('y2', y(r.dec) + 4)
+        .attr('stroke', col).attr('stroke-width', .9).attr('stroke-opacity', .65);
+    });
+  } else {
+    /* 空间不足：把两条注解竖排到【轴标题下方】的独立注释带里。
+       这里远离所有条与刻度（刻度在 ih+16、轴标题在 ih+44），
+       所以放在 ih+62 / ih+76，绝不会撞任何东西。 */
+    g.append('text').attr('x', 0).attr('y', ih + 64)
+      .attr('text-anchor', 'start').attr('fill', SP.ink).attr('font-size', 10.5)
+      .attr('font-weight', 500)
+      .text('峰值 ' + r00.corr.toFixed(4) + '（2000s）· 绑定最紧');
+    g.append('text').attr('x', 0).attr('y', ih + 78)
+      .attr('text-anchor', 'start').attr('fill', SP.rupture).attr('font-size', 10.5)
+      .text('2020s 回落至 ' + r20.corr.toFixed(4) + '　⚠ 仅 n=' + fmtNum(r20.n));
+  }
+
+  /* 轴标题 */
+  g.append('text').attr('x', iw / 2).attr('y', ih + 44)
+    .attr('text-anchor', 'middle').attr('fill', SP.ink2).attr('font-size', 12)
+    .text('同一十年内　原声度 ↔ 能量的相关系数　（0 → −0.8）');
+
+  /* 主图的"三段式"底色在这里也铺一遍 —— 主副图之间的视觉呼应
+     （让读者能直接看到：断层带那一年，相关值也恰好跨过一个台阶） */
+  eqZoneShade(g, x, 0, ih, SP_ZONE, SP, true);
+
+  /* hover */
+  const hit = g.selectAll('rect.sp-chit').data(EQ_ROWS).enter()
+    .append('rect')
+      .attr('class', 'sp-chit')
+      .attr('x', 0).attr('y', d => y(d.dec) - bh / 2 - 2)
+      .attr('width', iw).attr('height', bh + 4)
+      .attr('fill', 'transparent')
+      .style('cursor', 'pointer')
+      .on('mouseenter', function(ev, d){
+        tooltip.innerHTML = corrTip(d);
+        tooltip.classList.add('on');
+        placeTooltip(ev);
+        d3.select(this).attr('fill', 'rgba(255,255,255,.04)');
+      })
+      .on('mousemove', ev => placeTooltip(ev))
+      .on('mouseleave', function(){
+        hideTooltip();
+        d3.select(this).attr('fill', 'transparent');
+      });
+
+  const reduceMotion =
+    window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  const settleCorr = () => {
+    bars.interrupt();
+    bars.attr('width', d => Math.max(1, x(d.corr))).attr('opacity', 1);
+  };
+
+  if (isIntro && !reduceMotion){
+    playedIntroCorr = true;
+    bars.attr('width', 0).attr('opacity', .9)
+        .transition().delay((d, i) => 60 + i * 55).duration(420).ease(d3.easeCubicOut)
+        .attr('width', d => Math.max(1, x(d.corr))).attr('opacity', 1);
+    setTimeout(settleCorr, CFG.animMs + 900);
+    setTimeout(settleCorr, 2400);
+  } else {
+    settleCorr();
+  }
+}
+
+function corrTip(d){
+  const row = (k, v, cls) =>
+    '<div class="tt-r' + (cls ? ' ' + cls : '') + '"><span class="k">' + k + '</span>' +
+    '<span class="v">' + v + '</span></div>';
+  let h = '<div class="tt-h"><span>' + d.dec + 's</span>' +
+          '<span class="tt-n">n = ' + fmtNum(d.n) + '</span></div>';
+  h += row('十年内相关 r', d.corr.toFixed(4), 'hi');
+  h += row('解释', d.corr <= -0.7 ? '强绑定：点被压成一条线'
+              : d.corr <= -0.45 ? '中度绑定'
+              : '近独立：两点可自由散布');
+  h += row('原声度 ac', fmt4(d.ac));
+  h += row('能量 en', fmt4(d.en));
+  if (d.partial) h += '<div class="tt-note">◌ 残缺十年：n 仅 2010s 的 10.3%，SE 是 2.3 倍</div>';
+  return h;
+}
+
+/* 共用的"三段式"纵向色块（主副图视觉呼应的关键） */
+function eqZoneShade(g, xScale, y0, hgt, zones, C, vertical){
+  [['plateau', 0], ['rupture', 1], ['electric', 2]].forEach(([z]) => {
+    const Z = zones[z];
+    g.insert('rect', ':first-child')
+      .attr('x', xScale(Math.max(Z.hi, Z.lo)))
+      .attr('y', y0)
+      .attr('width', Math.abs(xScale(Z.lo) - xScale(Z.hi)))
+      .attr('height', hgt)
+      .attr('fill', C[z]).attr('opacity', z === 'rupture' ? 0.07 : 0.03);
+  });
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   5. 响应式：ResizeObserver 监听容器宽度变化并重绘
+   ═══════════════════════════════════════════════════════════════════════ */
+window.__onD3Ready(function(ok){
+  if (!ok || typeof d3 === 'undefined'){
+    const msg = '<div class="fallback">D3.js 未能加载。请检查网络后刷新页面' +
+                '（已尝试 d3js.org 与 jsDelivr 两个来源）。</div>';
+    [macroEl, mesoEl, mesoShapeEl, microEl, microDeepEl, spaceEl, spaceCorrEl].forEach(el => { if (el) el.innerHTML = msg; });
+    return;
+  }
+
+  // 引擎就绪 → 首次渲染（图 1 → 图 2 主图 → 图 2 副图 → 图 3 主图 → 图 3 副图 → 图 4 主图 → 图 4 副图）
+  renderMacro();
+  renderMeso();
+  renderMesoShape();
+  renderMicro();
+  renderMicroDeep();
+  renderSpace();
+  renderSpaceCorr();
+
+  // 后续尺寸变化（窗口缩放 / 侧栏开合 / 设备旋转）
+  // 两道保护：rAF 合并高频回调 + 宽度未变则跳过重绘（防止 RO 自触发死循环）。
+  // 改成「容器 → 渲染函数」的表驱动：再加图只需追加一行，不必再抄一段分支 —
+  // 之前的写法每加一图就要多记一个 lastW 变量，容易漏。
+  const targets = [
+    { el: macroEl, render: () => renderMacro(),                             w: macroEl.clientWidth },
+    { el: mesoEl,  render: () => { renderMeso(); renderMesoShape(); },       w: mesoEl.clientWidth  },
+    { el: microEl, render: () => { renderMicro(); renderMicroDeep(); },      w: microEl.clientWidth },
+    { el: spaceEl, render: () => { renderSpace(); renderSpaceCorr(); },      w: spaceEl.clientWidth }
+  ];
+
+  let raf = null;
+  const ro = new ResizeObserver(() => {
+    if (raf) cancelAnimationFrame(raf);
+    raf = requestAnimationFrame(() => {
+      let changed = false;
+      targets.forEach(t => {
+        const w = t.el.clientWidth;
+        t.hit = Math.abs(w - t.w) >= 1;   // 宽度没变就不重绘这一块
+        if (t.hit){ t.w = w; changed = true; }
+      });
+      if (!changed) return;
+      hideTooltip();
+      targets.forEach(t => { if (t.hit) t.render(); });
+    });
+  });
+  targets.forEach(t => ro.observe(t.el));
+});
+</script>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     Phase 5 · A. 阅读进度条 + 目录滚动高亮（scroll-spy）
+     ──────────────────────────────────────────────────────────────────────
+     刻意与 D3 解耦：即使 D3 加载失败、图表全部退化，导航仍必须可用。
+     因此这一段不放在 window.__onD3Ready 回调里。
+
+     性能设计（Task D）：
+       · 唯一监听的是 scroll，且 passive:true（不阻塞滚动合成）
+       · 回调里【只写一个标记 needsUpdate】，不做任何布局读取；
+         真正的测量全部推迟到 rAF 里，一帧最多算一次
+       · 用 IntersectionObserver 替代「每帧遍历所有 section 读 getBoundingClientRect」
+         —— IO 由浏览器在合成线程侧维护，成本远低于轮询
+     ══════════════════════════════════════════════════════════════════════ -->
+<script>
+(function(){
+  'use strict';
+
+  var docEl   = document.documentElement;
+  var progEl  = document.getElementById('progress');
+  var tocEl   = document.getElementById('toc');
+  var miniEl  = document.getElementById('toc-mini');
+  var headEl  = document.querySelector('.page-head');
+
+  /* 目录项：两个导航容器共用同一组 data-toc 值，一处高亮两处同步 */
+  var IDs      = ['sec-macro', 'sec-meso', 'sec-micro', 'sec-space', 'sec-forensic'];
+  var sections = IDs.map(function(id){ return document.getElementById(id); });
+
+  /* 所有可点击的目录链接（侧栏 + 角落折叠），按 data-toc 归组 */
+  var links = {};
+  IDs.forEach(function(id){ links[id] = []; });
+  Array.prototype.forEach.call(
+    document.querySelectorAll('#toc a[data-toc], #toc-mini a[data-toc]'),
+    function(a){ var k = a.getAttribute('data-toc'); if (links[k]) links[k].push(a); }
+  );
+
+  var TOP_OFFSET = 90;    // 触发线：距视口顶部多少 px 内算「正在读这一章」
+  var curId = null;
+
+  function setActive(id){
+    if (id === curId) return;          // 状态没变就不碰 DOM，避免每帧写样式
+    curId = id;
+    var idx = IDs.indexOf(id);
+    IDs.forEach(function(k, i){
+      links[k].forEach(function(a){
+        a.classList.toggle('cur',  k === id);
+        /* already-read：在当前章节之前 → 弱化成「已读」而不是「当前」 */
+        a.classList.toggle('done', idx > -1 && i < idx);
+      });
+    });
+  }
+
+  /* ── 进度条 ───────────────────────────────────────────────────────── */
+  function updateProgress(){
+    var h = docEl.scrollHeight - window.innerHeight;
+    var y = window.pageYOffset || docEl.scrollTop || 0;
+    var p = h > 0 ? Math.min(1, Math.max(0, y / h)) : 0;
+    /* scaleX 而非 width：transform 走合成线程，不触发重排。
+       直写而非走 transition —— 进度必须与滚动条严丝合缝。 */
+    progEl.style.transform = 'scaleX(' + p + ')';
+    return y;
+  }
+
+  /* ── 目录显隐：滚过页头才浮出，避免首屏与标题抢注意力 ──────────── */
+  function updateTocVisibility(y){
+    var trigger = headEl ? (headEl.offsetTop + headEl.offsetHeight * 0.62) : 260;
+    var on = y > trigger;
+    if (tocEl)  tocEl.classList.toggle('on', on);
+    if (miniEl) miniEl.classList.toggle('on', on);
+  }
+
+  /* ── scroll-spy 主体 ───────────────────────────────────────────────
+     用「触发线穿过区间」判定而不是 IO 的 ratio：
+     本页区块高度差异极大（宏观 417 行 vs 附录 200 行），
+     ratio 阈值在长区块上会迟迟不够、在短区块上又会抢焦。
+     改成一个细长条 rootMargin，让「哪一章正压着触发线」成为唯一判据。 */
+  var pending = false;
+  function schedule(){
+    if (pending) return;
+    pending = true;
+    requestAnimationFrame(function(){
+      pending = false;
+      var y = updateProgress();
+      updateTocVisibility(y);
+
+      var active = null, best = -Infinity;
+      for (var i = 0; i < sections.length; i++){
+        var s = sections[i];
+        if (!s) continue;
+        var top = s.offsetTop;             // 布局属性：每帧只读一次，且已 rAF 合帧
+        if (top - TOP_OFFSET <= y && top > best){ best = top; active = IDs[i]; }
+      }
+      /* 兜底：滚到页面最底部时，最后一章可能永远够不到触发线 */
+      if (!active){
+        var atBottom = (window.innerHeight + y) >= (docEl.scrollHeight - 4);
+        active = atBottom ? IDs[IDs.length - 1] : (y > 0 ? IDs[0] : null);
+      }
+      setActive(active);
+    });
+  }
+
+  window.addEventListener('scroll', schedule, { passive: true });
+  window.addEventListener('resize', schedule, { passive: true });
+
+  /* 点击目录后立即高亮，不等滚动结束 —— 否则会有半秒的「按了没反应」 */
+  Array.prototype.forEach.call(
+    document.querySelectorAll('#toc a[data-toc], #toc-mini a[data-toc]'),
+    function(a){
+      a.addEventListener('click', function(){
+        var k = a.getAttribute('data-toc');
+        setActive(k);
+        /* 窄屏折叠目录：跳转后自动收起，不挡住图表 */
+        if (miniEl && miniEl.hasAttribute('open') && window.innerWidth < 920){
+          miniEl.removeAttribute('open');
+        }
+      });
+    }
+  );
+
+  schedule();   // 首帧即初始化（刷新后停留在页面中部时状态必须是对的）
+})();
+</script>
+
+</body>
+</html>

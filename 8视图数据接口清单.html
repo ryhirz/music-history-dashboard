@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>曲风数据分析 · 8 视图数据接口清单</title>
+<style>
+  :root {
+    --blue: #007AFF;
+    --text: #1d1d1f;
+    --text2: #6e6e73;
+    --text3: #86868b;
+    --border: #e5e5e7;
+    --border2: #d2d2d7;
+    --bg2: #f5f5f7;
+    --green: #34c759;
+    --red: #ff3b30;
+    --orange: #ff9500;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Helvetica Neue", sans-serif;
+    background: #fff;
+    color: var(--text);
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 56px 32px 80px; }
+
+  .hd { margin-bottom: 40px; }
+  .hd h1 { font-size: 30px; font-weight: 600; letter-spacing: -0.5px; margin-bottom: 10px; }
+  .hd p { font-size: 15px; color: var(--text2); }
+  .badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 13px; font-weight: 500;
+    color: var(--green);
+    background: #f0faf3;
+    border: 0.5px solid #c8ebd4;
+    border-radius: 8px;
+    padding: 5px 11px;
+    margin-top: 16px;
+  }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); }
+
+  .stats { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 12px; margin-bottom: 44px; }
+  .stat { background: var(--bg2); border-radius: 12px; padding: 18px 20px; }
+  .stat .lb { font-size: 12px; color: var(--text2); margin-bottom: 6px; letter-spacing: 0.2px; }
+  .stat .vl { font-size: 26px; font-weight: 600; letter-spacing: -0.5px; font-variant-numeric: tabular-nums; }
+  .stat .un { font-size: 12px; color: var(--text3); font-weight: 400; margin-left: 3px; }
+
+  h2 { font-size: 19px; font-weight: 600; margin: 0 0 6px; letter-spacing: -0.3px; }
+  .sub { font-size: 13px; color: var(--text2); margin-bottom: 20px; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13.5px; margin-bottom: 48px; }
+  thead th {
+    text-align: left; font-weight: 500; font-size: 12px; color: var(--text2);
+    padding: 0 14px 11px; border-bottom: 0.5px solid var(--border2);
+    white-space: nowrap; letter-spacing: 0.3px;
+  }
+  tbody td { padding: 15px 14px; border-bottom: 0.5px solid var(--border); vertical-align: top; }
+  tbody tr:last-child td { border-bottom: none; }
+  .vn { font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace; font-size: 12.5px; color: var(--blue); font-weight: 500; }
+  .rn { font-variant-numeric: tabular-nums; font-weight: 500; }
+  .gran { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: var(--text2); }
+  .use { color: var(--text2); font-size: 13px; }
+  .chart { font-size: 12.5px; color: var(--text2); }
+  .tag {
+    display: inline-block; font-size: 11px; padding: 2px 7px; border-radius: 5px;
+    background: #eef5ff; color: var(--blue); margin-right: 4px; margin-bottom: 3px; white-space: nowrap;
+  }
+  .tag.g { background: #f0faf3; color: #1a8c42; }
+  .tag.o { background: #fff6e8; color: #b26a00; }
+  .tag.n { background: var(--bg2); color: var(--text2); }
+
+  .card {
+    border: 0.5px solid var(--border2); border-radius: 12px; padding: 28px 30px; margin-bottom: 48px;
+  }
+  .card h3 { font-size: 16px; font-weight: 600; margin-bottom: 4px; }
+  .card .cap { font-size: 13px; color: var(--text2); margin-bottom: 22px; }
+
+  .sg { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 12px; margin-bottom: 24px; }
+  .sgc { border: 0.5px solid var(--border); border-radius: 10px; padding: 18px 18px 16px; }
+  .sgc .nm { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: var(--blue); margin-bottom: 3px; word-break: break-all; }
+  .sgc .zh { font-size: 13.5px; font-weight: 500; margin-bottom: 14px; }
+  .sgc dl { display: grid; grid-template-columns: auto 1fr; gap: 5px 10px; font-size: 12.5px; }
+  .sgc dt { color: var(--text3); }
+  .sgc dd { text-align: right; font-variant-numeric: tabular-nums; font-weight: 500; }
+  .bar { height: 4px; border-radius: 2px; background: var(--border); margin-top: 14px; overflow: hidden; }
+  .bar i { display: block; height: 100%; border-radius: 2px; background: var(--blue); }
+
+  .note { font-size: 13px; color: var(--text2); border-left: 2px solid var(--border2); padding-left: 16px; }
+  .note b { color: var(--text); font-weight: 500; }
+  .note + .note { margin-top: 12px; }
+
+  .fm { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; background: var(--bg2); padding: 1px 5px; border-radius: 4px; }
+
+  footer { border-top: 0.5px solid var(--border); padding-top: 22px; font-size: 12.5px; color: var(--text3); }
+
+  @media (max-width: 820px) {
+    .stats { grid-template-columns: repeat(2, minmax(0,1fr)); }
+    .sg { grid-template-columns: 1fr; }
+    .wrap { padding: 36px 20px 60px; }
+    table { font-size: 12.5px; }
+    thead th, tbody td { padding-left: 8px; padding-right: 8px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="hd">
+    <h1>曲风数据分析 · 8 视图数据接口清单</h1>
+    <p>Spotify 曲风数据集（170,653 首，1921–2020）· DuckDB 转换聚合层锁定口径</p>
+    <div class="badge"><span class="dot"></span>8/8 视图 VALID · 技能自测 24/24 通过</div>
+  </div>
+
+  <div class="stats">
+    <div class="stat"><div class="lb">锁定视图</div><div class="vl">8<span class="un">个</span></div></div>
+    <div class="stat"><div class="lb">输出总行数</div><div class="vl">58,523<span class="un">行</span></div></div>
+    <div class="stat"><div class="lb">校验断言</div><div class="vl">48<span class="un">项全 pass</span></div></div>
+    <div class="stat"><div class="lb">校验失败码覆盖</div><div class="vl">9<span class="un">类</span></div></div>
+  </div>
+
+  <h2>视图台账</h2>
+  <p class="sub">执行顺序即编号顺序，不可乱序、不可并行。任一视图 INVALID 即断链，后续不再创建。</p>
+
+  <table>
+    <thead>
+      <tr>
+        <th style="width:7%">序</th>
+        <th style="width:22%">视图</th>
+        <th style="width:9%">行数</th>
+        <th style="width:20%">粒度</th>
+        <th style="width:42%">核心用途 · D3 图表类型</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="rn">1</td>
+        <td class="vn">yearly_valence</td>
+        <td class="rn">100</td>
+        <td class="gran">(yr)</td>
+        <td class="use">年度愉悦度基线，逐年对照<br><span class="tag">折线图</span><span class="tag n">按年</span></td>
+      </tr>
+      <tr>
+        <td class="rn">2</td>
+        <td class="vn">decade_features</td>
+        <td class="rn">11</td>
+        <td class="gran">(decade)</td>
+        <td class="use">按十年的舞蹈性 / 能量第一层概览<br><span class="tag">多线折线图</span><span class="tag o">含残缺十年标记</span></td>
+      </tr>
+      <tr>
+        <td class="rn">3</td>
+        <td class="vn">regression_data</td>
+        <td class="rn">58,236</td>
+        <td class="gran">(artist, yr)</td>
+        <td class="use">艺人 × 年面板，回归 / 聚类分析的数据底座<br><span class="tag">散点图</span><span class="tag">回归拟合</span></td>
+      </tr>
+      <tr>
+        <td class="rn">4</td>
+        <td class="vn">instrumental_vs_vocal</td>
+        <td class="rn">22</td>
+        <td class="gran">(decade, track_type)</td>
+        <td class="use">器乐曲 vs 人声曲的原声度分岔（§2.2）<br><span class="tag">双线折线图</span><span class="tag n">小倍数图</span></td>
+      </tr>
+      <tr>
+        <td class="rn">5</td>
+        <td class="vn">song_version_study</td>
+        <td class="rn">129</td>
+        <td class="gran">(song_key, decade)</td>
+        <td class="use">天然实验：同一首歌跨年代版本对比（§3.4）<br><span class="tag">斜坡图</span><span class="tag">分组小倍数</span></td>
+      </tr>
+      <tr>
+        <td class="rn">6</td>
+        <td class="vn">acoustic_trajectory</td>
+        <td class="rn">11</td>
+        <td class="gran">(decade)</td>
+        <td class="use">原声度整体轨迹 + 离散度带（§2.1）<br><span class="tag">折线 + 误差带</span><span class="tag o">1940s 均值越出 IQR</span></td>
+      </tr>
+      <tr>
+        <td class="rn">7</td>
+        <td class="vn">era_quadrant</td>
+        <td class="rn">11</td>
+        <td class="gran">(decade)</td>
+        <td class="use">原声 × 能量二维象限漂移 + 相关系数轨迹<br><span class="tag">置信椭圆</span><span class="tag">100% 堆叠面积</span></td>
+      </tr>
+      <tr>
+        <td class="rn">8</td>
+        <td class="vn">sixties_subgenres</td>
+        <td class="rn">3</td>
+        <td class="gran">(subgenre_label)</td>
+        <td class="use">1960s 三个制作风格簇的画像（下钻）<br><span class="tag">雷达图</span><span class="tag">平行坐标</span><span class="tag g">仅含 1960s</span></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>1960s 深潜：三个子群画像</h2>
+  <p class="sub">细分边界固定为 <span class="fm">acousticness ≥ 0.5</span> / <span class="fm">energy ≥ 0.5</span>。三组 n 之和 = 19,549，与 <span class="fm">era_quadrant</span> 的 1960s 行精确咬合。</p>
+
+  <div class="card">
+    <div class="sg">
+      <div class="sgc">
+        <div class="nm">acoustic_traditional</div>
+        <div class="zh">原声传统（流行/爵士/民谣）</div>
+        <dl>
+          <dt>n</dt><dd>10,694</dd>
+          <dt>占比</dt><dd>54.70%</dd>
+          <dt>响度</dt><dd>−14.98 dB</dd>
+          <dt>tempo</dt><dd>110.6 BPM</dd>
+          <dt>valence</dt><dd>0.444</dd>
+          <dt>响度离散</dt><dd>4.79</dd>
+        </dl>
+        <div class="bar"><i style="width:54.7%"></i></div>
+      </div>
+      <div class="sgc">
+        <div class="nm">transitional_pop</div>
+        <div class="zh">过渡期流行</div>
+        <dl>
+          <dt>n</dt><dd>5,095</dd>
+          <dt>占比</dt><dd>26.06%</dd>
+          <dt>响度</dt><dd>−10.63 dB</dd>
+          <dt>tempo</dt><dd>118.9 BPM</dd>
+          <dt>valence</dt><dd>0.662</dd>
+          <dt>响度离散</dt><dd>3.51</dd>
+        </dl>
+        <div class="bar"><i style="width:26.06%"></i></div>
+      </div>
+      <div class="sgc">
+        <div class="nm">electric_rock</div>
+        <div class="zh">电声摇滚</div>
+        <dl>
+          <dt>n</dt><dd>3,760</dd>
+          <dt>占比</dt><dd>19.23%</dd>
+          <dt>响度</dt><dd>−8.89 dB</dd>
+          <dt>tempo</dt><dd>123.1 BPM</dd>
+          <dt>valence</dt><dd>0.709</dd>
+          <dt>响度离散</dt><dd>2.57</dd>
+        </dl>
+        <div class="bar"><i style="width:19.23%"></i></div>
+      </div>
+    </div>
+
+    <div class="note"><b>区分度的独立证据</b>　三个子群由 <span class="fm">acousticness</span> / <span class="fm">energy</span> 划分，故这两个变量的组间差异属循环论证。真正的独立证据来自非定义变量：响度（Cohen's d：A→C <b>1.585</b>、A→B 1.038、B→C 0.564，唯一贯穿三对）与 valence（A→C <b>1.190</b>、A→B 0.919，但 B→C 仅 0.213）。</div>
+
+    <div class="note"><b>边界是约定值，不是自然断点</b>　五组阈值扰动下 n 漂移最大 26.09%，但响度质心漂移 ≤ 3.99%、tempo ≤ 0.76% —— 质心稳定、边界敏感。这与 <span class="fm">era_quadrant</span> 记录到的负峰度（−0.718）互证：若存在天然三簇，峰度应为正。</div>
+
+    <div class="note"><b>样本量健康度</b>　五组阈值扰动下最小子群始终位于 2,243–5,852 之间，全部 ≥ 1000；最小组占比最低 11.5%，不存在统计噪声类。</div>
+  </div>
+
+  <h2>校验凭证</h2>
+  <p class="sub">每视图六项断言：行数 / 列集合 / 空值 / 唯一性 / 列类型 / 值域。</p>
+  <div class="note">台账全量回归 <b>8/8 VALID</b>，退出码 0。技能自测 <b>24/24 通过</b>，覆盖 VALID 路径与全部 9 类失败码（在临时库副本上运行，未触碰原库）。</div>
+  <div class="note">跨视图一致性仅比对<b>确定性列</b>（整数计数、分组键），遵守「禁止跨视图浮点等值断言」——浮点聚合走并行归约，同一表达式在不同批次可差约 1 ULP。</div>
+
+  <footer>
+    数据源 archive/data.csv · SHA256 c97c4234…ded7f8 · 29,654,587 字节<br>
+    生成于 2026-09-28 · DuckDB 转换聚合层锁定口径
+  </footer>
+
+</div>
+</body>
+</html>

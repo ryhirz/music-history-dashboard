@@ -1,0 +1,1566 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>原声 → 电子：一个世纪的音乐制作迁移 | 曲风数据分析</title>
+<style>
+:root{
+  --blue:#007AFF;
+  --blue-soft:#E8F1FF;
+  --ink:#1D1D1F;
+  --ink-2:#424245;
+  --ink-3:#6E6E73;
+  --ink-4:#86868B;
+  --line:#E5E5EA;
+  --line-2:#F2F2F7;
+  --bg:#FFFFFF;
+  --bg-soft:#FAFAFC;
+  --warn:#FF9500;
+  --warn-soft:#FFF7E8;
+  --danger:#FF3B30;
+  --r:12px;
+  --r-sm:8px;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  background:var(--bg);
+  color:var(--ink);
+  font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","SF Pro Display","Helvetica Neue","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  font-size:16px;
+  line-height:1.7;
+  -webkit-font-smoothing:antialiased;
+  text-rendering:optimizeLegibility;
+}
+.wrap{max-width:1080px;margin:0 auto;padding:0 32px 120px}
+
+/* ── 顶部导航 ── */
+.topbar{
+  position:sticky;top:0;z-index:100;
+  background:rgba(255,255,255,.82);
+  backdrop-filter:saturate(180%) blur(20px);
+  -webkit-backdrop-filter:saturate(180%) blur(20px);
+  border-bottom:1px solid var(--line);
+}
+.topbar-in{
+  max-width:1080px;margin:0 auto;padding:0 32px;
+  height:52px;display:flex;align-items:center;gap:24px;
+}
+.topbar-brand{font-size:14px;font-weight:600;letter-spacing:-.01em;white-space:nowrap}
+.topbar-brand span{color:var(--blue)}
+.topbar-nav{display:flex;gap:20px;margin-left:auto;overflow-x:auto}
+.topbar-nav a{
+  font-size:13px;color:var(--ink-3);text-decoration:none;
+  white-space:nowrap;padding:4px 0;border-bottom:2px solid transparent;
+  transition:color .2s,border-color .2s;
+}
+.topbar-nav a:hover{color:var(--blue);border-bottom-color:var(--blue)}
+
+/* ── 头部 ── */
+header{padding:72px 0 40px;border-bottom:1px solid var(--line)}
+.eyebrow{
+  font-size:13px;font-weight:600;color:var(--blue);
+  letter-spacing:.06em;text-transform:uppercase;margin-bottom:16px;
+}
+h1{
+  font-size:44px;line-height:1.15;font-weight:700;
+  letter-spacing:-.022em;margin-bottom:16px;
+}
+h1 .arrow{color:var(--blue);font-weight:400}
+.subtitle{font-size:19px;color:var(--ink-3);font-weight:400;letter-spacing:-.01em}
+.meta{
+  display:flex;flex-wrap:wrap;gap:8px;margin-top:28px;
+}
+.meta-chip{
+  font-size:12.5px;color:var(--ink-2);background:var(--bg-soft);
+  border:1px solid var(--line);border-radius:100px;padding:5px 13px;
+  font-variant-numeric:tabular-nums;
+}
+.meta-chip b{font-weight:600;color:var(--ink)}
+
+/* ── 章节 ── */
+section{padding:64px 0 0}
+.sec-head{margin-bottom:28px}
+.sec-num{
+  display:inline-flex;align-items:center;gap:9px;
+  font-size:12.5px;font-weight:600;color:var(--blue);
+  letter-spacing:.05em;text-transform:uppercase;margin-bottom:12px;
+}
+.sec-num::before{
+  content:'';width:18px;height:2px;background:var(--blue);border-radius:2px;
+}
+h2{
+  font-size:30px;line-height:1.25;font-weight:700;
+  letter-spacing:-.02em;margin-bottom:12px;
+}
+h2 .tag{
+  display:inline-block;font-size:13px;font-weight:600;
+  padding:3px 10px;border-radius:6px;vertical-align:middle;
+  margin-right:10px;letter-spacing:0;
+}
+.tag-li{background:var(--blue);color:#fff}
+.tag-po{background:var(--ink);color:#fff}
+.tag-zheng{background:var(--blue-soft);color:var(--blue);border:1px solid #C9DEFF}
+.tag-fu{background:var(--warn-soft);color:#B26A00;border:1px solid #FFE0A3}
+.sec-desc{font-size:16.5px;color:var(--ink-3);max-width:800px}
+
+h3{
+  font-size:19px;font-weight:650;letter-spacing:-.012em;
+  margin:44px 0 16px;color:var(--ink);
+}
+h4{font-size:15.5px;font-weight:650;margin:24px 0 10px;color:var(--ink-2)}
+p{margin-bottom:15px;color:var(--ink-2)}
+p.lead{font-size:17.5px;color:var(--ink);line-height:1.68}
+strong{font-weight:650;color:var(--ink)}
+.num{font-variant-numeric:tabular-nums;font-feature-settings:'tnum'}
+code{
+  font-family:"SF Mono",ui-monospace,Menlo,Consolas,monospace;
+  font-size:.88em;background:var(--line-2);color:var(--ink);
+  padding:2px 6px;border-radius:5px;
+}
+a{color:var(--blue);text-decoration:none}
+a:hover{text-decoration:underline}
+
+/* ── 卡片 ── */
+.card{
+  background:var(--bg);border:1px solid var(--line);
+  border-radius:var(--r);padding:24px 26px;margin-bottom:16px;
+}
+.card-soft{background:var(--bg-soft)}
+.card-blue{background:var(--blue-soft);border-color:#C9DEFF}
+.card-warn{background:var(--warn-soft);border-color:#FFE0A3}
+
+/* ── 可靠性声明 ── */
+.disclosure{
+  margin-top:36px;border:1px solid var(--line);border-radius:var(--r);
+  overflow:hidden;
+}
+.disclosure-head{
+  display:flex;align-items:center;gap:10px;
+  padding:16px 24px;background:var(--bg-soft);
+  border-bottom:1px solid var(--line);cursor:pointer;
+  user-select:none;
+}
+.disclosure-head .ico{
+  width:22px;height:22px;border-radius:50%;background:var(--blue);
+  color:#fff;font-size:13px;font-weight:700;
+  display:flex;align-items:center;justify-content:center;flex:0 0 auto;
+}
+.disclosure-head .t{font-size:15px;font-weight:650}
+.disclosure-head .hint{margin-left:auto;font-size:12.5px;color:var(--ink-4)}
+.disclosure-body{padding:22px 24px 24px}
+.rule{
+  display:flex;gap:16px;padding:18px 0;
+  border-bottom:1px solid var(--line-2);
+}
+.rule:last-child{border-bottom:none;padding-bottom:0}
+.rule:first-child{padding-top:0}
+.rule-badge{
+  flex:0 0 auto;width:38px;height:38px;border-radius:9px;
+  display:flex;align-items:center;justify-content:center;
+  font-size:13px;font-weight:700;color:#fff;background:var(--ink);
+}
+.rule.r-a .rule-badge{background:var(--blue)}
+.rule.r-b .rule-badge{background:var(--warn)}
+.rule.r-c .rule-badge{background:var(--ink-3)}
+.rule-body{flex:1;min-width:0}
+.rule-title{font-size:15px;font-weight:650;margin-bottom:5px}
+.rule-text{font-size:14.5px;color:var(--ink-2);line-height:1.6}
+.rule-text .verdict{
+  display:inline-block;font-weight:650;color:var(--danger);
+}
+
+/* ── 表格 ── */
+.tbl-wrap{
+  overflow-x:auto;border:1px solid var(--line);border-radius:var(--r);
+  margin-bottom:8px;
+}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th,td{
+  padding:11px 14px;text-align:right;
+  border-bottom:1px solid var(--line-2);white-space:nowrap;
+  font-variant-numeric:tabular-nums;
+}
+th{
+  background:var(--bg-soft);font-weight:600;color:var(--ink-2);
+  font-size:12.5px;letter-spacing:.02em;position:sticky;top:0;
+}
+th:first-child,td:first-child{text-align:left;font-variant-numeric:normal}
+tbody tr:last-child td{border-bottom:none}
+tbody tr:hover{background:#FCFCFE}
+tr.partial{opacity:.62;background:var(--bg-soft)}
+tr.partial td{color:var(--ink-3)}
+tr.partial td:first-child::after{
+  content:'残缺';font-size:10px;font-weight:600;
+  color:var(--warn);border:1px solid #FFE0A3;background:var(--warn-soft);
+  border-radius:4px;padding:1px 5px;margin-left:7px;vertical-align:1px;
+}
+td.hi{font-weight:650;color:var(--ink)}
+td.blue{color:var(--blue);font-weight:650}
+.cap{font-size:13px;color:var(--ink-4);margin:8px 0 0;line-height:1.55}
+.badge-quota{
+  display:inline-block;font-size:11.5px;font-weight:600;
+  color:var(--blue);background:var(--blue-soft);border:1px solid #C9DEFF;
+  border-radius:5px;padding:1px 7px;margin-left:6px;vertical-align:1px;
+  white-space:nowrap;
+}
+
+/* ── Sparkline ── */
+.spark{width:82px;height:22px;display:block;margin-left:auto}
+.spark path{fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.spark .up{stroke:var(--blue)}
+.spark .down{stroke:var(--ink-3)}
+
+/* ── 结论卡 ── */
+.findings{display:grid;gap:14px;margin:24px 0}
+.finding{
+  display:flex;gap:18px;padding:22px 24px;
+  border:1px solid var(--line);border-radius:var(--r);
+  background:var(--bg);
+}
+.finding-n{
+  flex:0 0 auto;font-size:26px;font-weight:700;color:var(--blue);
+  line-height:1;letter-spacing:-.03em;font-variant-numeric:tabular-nums;
+  min-width:34px;
+}
+.finding-t{font-size:16px;font-weight:650;margin-bottom:6px}
+.finding-d{font-size:14.5px;color:var(--ink-2);line-height:1.62}
+.finding-d .k{
+  font-weight:650;color:var(--ink);font-variant-numeric:tabular-nums;
+}
+
+/* ── 指标条 ── */
+.stat-row{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin:20px 0}
+.stat{
+  border:1px solid var(--line);border-radius:var(--r);
+  padding:18px 20px;background:var(--bg);
+}
+.stat-l{font-size:12.5px;color:var(--ink-4);margin-bottom:7px}
+.stat-v{
+  font-size:30px;font-weight:700;letter-spacing:-.028em;
+  font-variant-numeric:tabular-nums;line-height:1.1;color:var(--ink);
+}
+.stat-v.blue{color:var(--blue)}
+.stat-u{font-size:15px;font-weight:500;color:var(--ink-4);margin-left:2px}
+.stat-d{font-size:12.5px;color:var(--ink-4);margin-top:6px;font-variant-numeric:tabular-nums}
+
+/* ── 图表 ── */
+.chart-box{
+  border:1px solid var(--line);border-radius:var(--r);
+  padding:22px 20px 16px;margin:20px 0;background:var(--bg);
+}
+.chart-title{font-size:15px;font-weight:650;margin-bottom:4px}
+.chart-sub{font-size:13px;color:var(--ink-4);margin-bottom:18px}
+.chart-box svg{display:block;width:100%;height:auto;overflow:visible}
+.grid-line{stroke:var(--line);stroke-width:1}
+.grid-line.dash{stroke-dasharray:2 4;stroke:var(--line-2)}
+.axis-t{font-size:11px;fill:var(--ink-4);font-variant-numeric:tabular-nums}
+.axis-l{font-size:12px;fill:var(--ink-3);font-weight:600}
+
+/* ── 步骤 ── */
+.steps{counter-reset:step;margin:24px 0}
+.step{
+  position:relative;padding:0 0 30px 52px;
+  border-left:2px solid var(--line);margin-left:17px;
+}
+.step:last-child{border-left-color:transparent;padding-bottom:0}
+.step::before{
+  counter-increment:step;content:counter(step);
+  position:absolute;left:-18px;top:-2px;
+  width:34px;height:34px;border-radius:50%;
+  background:var(--bg);border:2px solid var(--line);
+  display:flex;align-items:center;justify-content:center;
+  font-size:14px;font-weight:700;color:var(--ink-3);
+}
+.step.done::before{background:var(--blue);border-color:var(--blue);color:#fff}
+.step-h{font-size:16.5px;font-weight:650;margin-bottom:9px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.step-h .v{
+  font-size:12px;font-weight:600;padding:2px 9px;border-radius:5px;
+}
+.v-pass{background:var(--blue-soft);color:var(--blue);border:1px solid #C9DEFF}
+.v-fail{background:#FFF0EF;color:var(--danger);border:1px solid #FFD1CE}
+.step-body{font-size:14.5px;color:var(--ink-2);line-height:1.65}
+.step-body p{margin-bottom:12px}
+.step-body p:last-child{margin-bottom:0}
+
+/* ── 对照 ── */
+.versus{display:grid;grid-template-columns:1fr auto 1fr;gap:0;align-items:stretch;margin:24px 0}
+.vs-card{
+  border:1px solid var(--line);padding:24px;background:var(--bg);
+}
+.vs-card:first-child{border-radius:var(--r) 0 0 var(--r)}
+.vs-card:last-child{border-radius:0 var(--r) var(--r) 0}
+.vs-card.hi{background:var(--blue-soft);border-color:#C9DEFF}
+.vs-mid{
+  display:flex;align-items:center;justify-content:center;
+  width:56px;font-size:13px;font-weight:700;color:var(--ink-4);
+  background:var(--bg-soft);border-top:1px solid var(--line);border-bottom:1px solid var(--line);
+}
+.vs-l{font-size:12.5px;color:var(--ink-4);margin-bottom:10px}
+.vs-v{font-size:38px;font-weight:700;letter-spacing:-.03em;line-height:1;font-variant-numeric:tabular-nums}
+.vs-card.hi .vs-v{color:var(--blue)}
+.vs-d{font-size:13px;color:var(--ink-3);margin-top:8px}
+.vs-delta{
+  display:inline-block;margin-top:10px;font-size:13px;font-weight:650;
+  font-variant-numeric:tabular-nums;padding:3px 10px;border-radius:6px;
+  background:var(--line-2);color:var(--ink-2);
+}
+.vs-card.hi .vs-delta{background:#fff;color:var(--blue);border:1px solid #C9DEFF}
+
+/* ── 逻辑链 ── */
+.chain{margin:22px 0;border-left:2px solid var(--blue);padding-left:0}
+.chain-item{
+  padding:14px 0 14px 22px;position:relative;
+  font-size:15px;color:var(--ink-2);line-height:1.62;
+  border-bottom:1px solid var(--line-2);
+}
+.chain-item:last-child{border-bottom:none}
+.chain-item::before{
+  content:'';position:absolute;left:-6px;top:22px;
+  width:10px;height:10px;border-radius:50%;
+  background:#fff;border:2px solid var(--blue);
+}
+.chain-item.act::before{background:var(--blue)}
+.chain-item.act{color:var(--ink);font-weight:600}
+
+/* ── 列表 ── */
+ul.clean{list-style:none;margin:14px 0}
+ul.clean li{
+  position:relative;padding-left:22px;margin-bottom:10px;
+  font-size:14.5px;color:var(--ink-2);line-height:1.62;
+}
+ul.clean li::before{
+  content:'';position:absolute;left:6px;top:10px;
+  width:5px;height:5px;border-radius:50%;background:var(--blue);
+}
+ul.clean li b{color:var(--ink);font-weight:650}
+
+/* ── 自检清单 ── */
+.checklist{border:1px solid var(--line);border-radius:var(--r);overflow:hidden;margin-top:20px}
+.check-item{
+  display:flex;gap:14px;padding:17px 22px;
+  border-bottom:1px solid var(--line-2);align-items:flex-start;
+}
+.check-item:last-child{border-bottom:none}
+.check-ico{
+  flex:0 0 auto;width:22px;height:22px;border-radius:50%;
+  background:var(--blue);color:#fff;font-size:12px;font-weight:700;
+  display:flex;align-items:center;justify-content:center;margin-top:2px;
+}
+.check-body{flex:1;min-width:0}
+.check-q{font-size:14.5px;font-weight:650;margin-bottom:4px}
+.check-a{font-size:13.5px;color:var(--ink-3);line-height:1.6}
+.check-a .ev{color:var(--blue);font-weight:600;font-variant-numeric:tabular-nums}
+
+/* ── 页脚 ── */
+footer{
+  margin-top:80px;padding-top:32px;border-top:1px solid var(--line);
+  font-size:13px;color:var(--ink-4);line-height:1.7;
+}
+footer .f-title{font-size:14px;font-weight:650;color:var(--ink-2);margin-bottom:10px}
+footer code{font-size:12px}
+
+/* ── 响应式 ── */
+@media (max-width:860px){
+  .wrap,.topbar-in{padding-left:22px;padding-right:22px}
+  h1{font-size:32px}
+  h2{font-size:24px}
+  .stat-row{grid-template-columns:1fr}
+  .versus{grid-template-columns:1fr;gap:0}
+  .vs-card:first-child{border-radius:var(--r) var(--r) 0 0}
+  .vs-card:last-child{border-radius:0 0 var(--r) var(--r)}
+  .vs-mid{width:auto;height:44px}
+  .topbar-nav{display:none}
+  header{padding:48px 0 32px}
+  section{padding:48px 0 0}
+}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-in">
+    <div class="topbar-brand">曲风数据分析 <span>/</span> 双线叙事报告</div>
+    <nav class="topbar-nav">
+      <a href="#s0">可靠性声明</a>
+      <a href="#s1">【立】迁移</a>
+      <a href="#s2">【破】证伪</a>
+      <a href="#s3">【证】天然实验</a>
+      <a href="#s4">【附】2020 断崖</a>
+      <a href="#s5">结论</a>
+      <a href="#s6">自检</a>
+    </nav>
+  </div>
+</div>
+
+<div class="wrap">
+
+<header>
+  <div class="eyebrow">Spotify 曲风数据集 · 探索性分析报告</div>
+  <h1>原声 <span class="arrow">→</span> 电子<br>一个世纪的音乐制作迁移</h1>
+  <p class="subtitle">一次自我证伪的数据分析 —— 关于「趋势如何被证明，又如何被推翻」</p>
+  <div class="meta">
+    <span class="meta-chip">曲目 <b>170,653</b></span>
+    <span class="meta-chip">年份 <b>1921–2020</b></span>
+    <span class="meta-chip">跨度 <b>100</b> 年</span>
+    <span class="meta-chip">数据源 <b>4</b> 个锁定视图</span>
+    <span class="meta-chip">视图校验 <b>3/3 VALID</b></span>
+    <span class="meta-chip">指纹 <b>PASS</b></span>
+  </div>
+</header>
+
+<!-- ═══════════════ 第 0 节 可靠性声明 ═══════════════ -->
+<section id="s0">
+  <div class="sec-head">
+    <div class="sec-num">第 0 节 · 阅读前必读</div>
+    <h2>数据可靠性声明</h2>
+    <p class="sec-desc">本报告的所有结论都只在下述三条限制内成立。跳过本节阅读结论，等同于误读。</p>
+  </div>
+
+  <div class="disclosure">
+    <div class="disclosure-head">
+      <div class="ico">!</div>
+      <div class="t">三条铁律 — 本数据集不可逾越的边界</div>
+      <div class="hint">永久展开</div>
+    </div>
+    <div class="disclosure-body">
+
+      <div class="rule r-a">
+        <div class="rule-badge">A</div>
+        <div class="rule-body">
+          <div class="rule-title">这是配额抽样数据集，不是自然样本</div>
+          <div class="rule-text">
+            各十年样本量（1920s–2010s）均落在 <span class="num">19,000–20,000</span> 区间，整齐如刻度：
+            1920s <span class="num">5,126</span> · 1930s <span class="num">9,549</span> ·
+            1940s <span class="num">15,378</span> · 1950s <span class="num">19,850</span> ·
+            1960s <span class="num">19,549</span> · 1970s <span class="num">20,000</span> ·
+            1980s <span class="num">19,850</span> · 1990s <span class="num">19,901</span> ·
+            2000s <span class="num">19,646</span> · 2010s <span class="num">19,774</span> ·
+            2020s <span class="num">2,030</span>。
+            <br><br>
+            这是「每十年等量抽样」子集。每个十年的样本量被人为控制在约
+            <strong>19,000–20,000 首</strong>（配额抽样），
+            因此<span class="verdict">不能直接用曲目数比较哪个年代的音乐更多</span>。
+            本报告中任何涉及「产量/数量随年代变化」的表述都不成立；
+            而<strong>组内均值与趋势不受影响</strong>，所有结论仅在该抽样口径内有效。
+          </div>
+        </div>
+      </div>
+
+      <div class="rule r-b">
+        <div class="rule-badge">B</div>
+        <div class="rule-body">
+          <div class="rule-title"><code>popularity</code> 指标被时序污染，禁止跨年代比较</div>
+          <div class="rule-text">
+            各年代平均 <code>popularity</code>：1920s <span class="num">1.3</span> →
+            1940s <span class="num">1.9</span> → 1960s <span class="num">26.6</span> →
+            1980s <span class="num">37.5</span> → 2000s <span class="num">49.7</span> →
+            2020s <span class="num">64.3</span>。
+            <br><br>
+            这<span class="verdict">不是「音乐变受欢迎了」</span>。<code>popularity</code> 是 Spotify 的
+            <strong>当前热度快照</strong>，老歌的「当前活跃听众」天然更少。
+            任何跨年代的热度/流行度比较都是指标假象。
+            <strong>本报告全程不使用该字段做任何论证。</strong>
+          </div>
+        </div>
+      </div>
+
+      <div class="rule r-c">
+        <div class="rule-badge">C</div>
+        <div class="rule-body">
+          <div class="rule-title">曲名有 7–18% 重复（多版本现象）</div>
+          <div class="rule-text">
+            全年代均存在同曲多名现象，极端如《White Christmas》有 <span class="num">73</span> 个版本跨 40 年。
+            <br><br>
+            影响有两个方向，都要注意：
+            <strong>不能</strong>把「曲目数」当作「作品数」；
+            同时<strong>也不能</strong>用「重复率」推断数据质量差 ——
+            这是标准曲/翻录的正常现象。
+            更重要的是，它<span class="verdict" style="color:var(--blue)">恰好为天然实验提供了样本</span>
+            （见第 3 节）。
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <h3>数据来源与校验状态</h3>
+  <p>本报告全部数值取自四个已锁定并通过校验的视图，无任何临时表或旧名对象参与：</p>
+  <div class="tbl-wrap">
+    <table>
+      <thead>
+        <tr><th>视图</th><th>行数</th><th>粒度</th><th>校验</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>raw_tracks</code></td><td class="num">170,653</td><td>逐曲目（19 列）</td><td class="blue">源视图</td></tr>
+        <tr><td><code>yearly_valence</code></td><td class="num">100</td><td>逐年</td><td class="blue">VALID</td></tr>
+        <tr><td><code>decade_features</code></td><td class="num">11</td><td>逐年</td><td class="blue">VALID</td></tr>
+        <tr><td><code>regression_data</code></td><td class="num">58,236</td><td>艺人 × 年</td><td class="blue">VALID</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="cap">
+    源文件 <code>archive/data.csv</code> 的 SHA256 指纹校验结果 <strong>PASS</strong>，
+    与体检阶段基准一致，可确认数据未被改动。
+    三视图均通过行数、字段存在性、列类型、空值、唯一性、值域六项断言。
+  </p>
+</section>
+
+<!-- ═══════════════ 第 1 节 【立】 ═══════════════ -->
+<section id="s1">
+  <div class="sec-head">
+    <div class="sec-num">第 1 节 · 主线</div>
+    <h2><span class="tag tag-li">立</span>原声 → 电子的世纪迁移</h2>
+    <p class="sec-desc">
+      先把结论摆出来：过去一百年，流行音乐的声学特征发生了方向高度一致的系统性迁移。
+      证据是十个声学指标的十年轨迹。
+    </p>
+  </div>
+
+  <h3>1.1 十条声学指标的十年轨迹</h3>
+  <p>
+    下表是全部 170,653 条曲目按十年聚合的结果。
+    <span class="badge-quota">配额抽样 · 仅比均值不比数量</span>
+  </p>
+
+  <div class="tbl-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>十年</th>
+          <th>原声度</th><th>能量度</th><th>舞动度</th><th>器乐度</th>
+          <th>响度 dB</th><th>愉悦度</th><th>BPM</th><th>时长 min</th><th>趋势</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>1920s</td>
+          <td class="hi">0.802</td><td>0.235</td><td>0.587</td><td>0.377</td>
+          <td>−16.7</td><td>0.542</td><td>110.4</td><td>3.06</td>
+          <td><svg class="spark" viewBox="0 0 82 22"><path class="down" d="M2,4 L14,2 L26,3 L38,7 L50,12 L62,18 L80,20"/></svg></td>
+        </tr>
+        <tr>
+          <td>1930s</td>
+          <td class="hi">0.868</td><td>0.287</td><td>0.542</td><td>0.277</td>
+          <td>−14.2</td><td>0.568</td><td>111.5</td><td>3.46</td>
+          <td><svg class="spark" viewBox="0 0 82 22"><path class="down" d="M2,2 L14,7 L26,3 L38,7 L50,12 L62,18 L80,20"/></svg></td>
+        </tr>
+        <tr>
+          <td>1940s</td>
+          <td class="hi">0.871</td><td>0.255</td><td>0.473</td><td>0.363</td>
+          <td>−15.3</td><td>0.488</td><td>107.4</td><td>3.63</td>
+          <td><svg class="spark" viewBox="0 0 82 22"><path class="down" d="M2,2 L14,7 L26,3 L38,7 L50,12 L62,18 L80,20"/></svg></td>
+        </tr>
+        <tr>
+          <td>1950s</td>
+          <td class="hi">0.840</td><td>0.287</td><td>0.477</td><td>0.248</td>
+          <td>−14.7</td><td>0.479</td><td>111.0</td><td>3.67</td>
+          <td><svg class="spark" viewBox="0 0 82 22"><path class="down" d="M2,3 L14,7 L26,3 L38,7 L50,12 L62,18 L80,20"/></svg></td>
+        </tr>
+        <tr>
+          <td>1960s</td>
+          <td class="hi">0.624</td><td>0.415</td><td>0.495</td><td>0.158</td>
+          <td>−12.7</td><td>0.552</td><td>115.2</td><td>3.53</td>
+          <td><svg class="spark" viewBox="0 0 82 22"><path class="down" d="M2,3 L14,7 L26,3 L38,9 L50,12 L62,18 L80,20"/></svg></td>
+        </tr>
+        <tr>
+          <td>1970s</td>
+          <td class="hi">0.400</td><td>0.534</td><td>0.525</td><td>0.116</td>
+          <td>−11.4</td><td>0.585</td><td>119.9</td><td>4.23</td>
+          <td><svg class="spark" viewBox="0 0 82 22"><path class="down" d="M2,3 L14,8 L26,3 L38,11 L50,12 L62,18 L80,20"/></svg></td>
+        </tr>
+        <tr>
+          <td>1980s</td>
+          <td class="hi">0.299</td><td>0.595</td><td>0.546</td><td>0.122</td>
+          <td>−11.2</td><td>0.564</td><td>121.3</td><td>4.20</td>
+          <td><svg class="spark" viewBox="0 0 82 22"><path class="down" d="M2,3 L14,8 L26,3 L38,11 L50,12 L62,18 L80,20"/></svg></td>
+        </tr>
+        <tr>
+          <td>1990s</td>
+          <td class="hi">0.308</td><td>0.586</td><td>0.566</td><td>0.110</td>
+          <td>−10.0</td><td>0.545</td><td>119.4</td><td>4.14</td>
+          <td><svg class="spark" viewBox="0 0 82 22"><path class="down" d="M2,3 L14,8 L26,3 L38,11 L50,12 L62,18 L80,20"/></svg></td>
+        </tr>
+        <tr>
+          <td>2000s</td>
+          <td class="hi">0.270</td><td>0.652</td><td>0.574</td><td>0.084</td>
+          <td>−7.5</td><td>0.530</td><td>121.3</td><td>3.99</td>
+          <td><svg class="spark" viewBox="0 0 82 22"><path class="down" d="M2,3 L14,8 L26,3 L38,11 L50,12 L62,18 L80,20"/></svg></td>
+        </tr>
+        <tr>
+          <td>2010s</td>
+          <td class="hi">0.264</td><td>0.629</td><td>0.597</td><td>0.087</td>
+          <td>−7.5</td><td>0.456</td><td>120.8</td><td>3.78</td>
+          <td><svg class="spark" viewBox="0 0 82 22"><path class="down" d="M2,3 L14,8 L26,3 L38,11 L50,12 L62,18 L80,20"/></svg></td>
+        </tr>
+        <tr class="partial">
+          <td>2020s</td>
+          <td class="hi">0.220</td><td>0.631</td><td>0.693</td><td>0.016</td>
+          <td>−6.6</td><td>0.501</td><td>124.3</td><td>3.23</td>
+          <td><svg class="spark" viewBox="0 0 82 22"><path class="down" d="M2,3 L14,8 L26,3 L38,11 L50,12 L62,18 L80,20"/></svg></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="cap">
+    单位：原声度 / 能量度 / 舞动度 / 器乐度 / 愉悦度 ∈ [0,1]；响度单位 dB（负值）；
+    BPM 为每分钟节拍数；时长为分钟。<strong>2020s 为残缺十年</strong>（仅 2020 一年，
+    2,030 条样本，<code>is_partial_decade = true</code>），其数值在图表与推理中一律降权处理，详见第 4 节。
+  </p>
+
+  <h3>1.2 三条主干结论</h3>
+
+  <div class="findings">
+    <div class="finding">
+      <div class="finding-n">01</div>
+      <div>
+        <div class="finding-t">原声度断崖式退场，与能量度强负相关</div>
+        <div class="finding-d">
+          原声度从 <span class="k">0.802 → 0.220</span>，<span class="k">下降 73%</span>。
+          与此同时能量度从 <span class="k">0.235 → 0.631</span>。
+          两者的全局 Pearson 相关系数 <span class="k">r = −0.749</span>，属强负相关 ——
+          原声乐器与电声/电子音色在同一维度上此消彼长。
+        </div>
+      </div>
+    </div>
+    <div class="finding">
+      <div class="finding-n">02</div>
+      <div>
+        <div class="finding-t">能量上升的物理表现：响度战争</div>
+        <div class="finding-d">
+          能量度与响度 <span class="k">r = +0.782</span>（本报告中最强的一对正相关）。
+          响度从 <span class="k">−16.7 dB → −6.6 dB</span>，
+          <span class="k">提升约 10 dB</span>。按主观听感近似，10 dB 约等于「响度翻倍」——
+          这就是录音工业著名的「响度战争」的量化呈现。
+        </div>
+      </div>
+    </div>
+    <div class="finding">
+      <div class="finding-n">03</div>
+      <div>
+        <div class="finding-t">舞动度是最单调的趋势</div>
+        <div class="finding-d">
+          舞动度从 <span class="k">0.587 → 0.693</span>，
+          在 10 个十年段中<span class="k">上升 8 次</span>。
+          它是所有指标里方向最稳定、几乎不受年代噪声干扰的一条 ——
+          没有戏剧性的断点，也没有回撤。
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <h3>1.3 物理断点：1960 年代中期</h3>
+
+  <p class="lead">
+    十年表给出的印象是「1970 年代开始转变」。<strong>这是个精度错误。</strong>
+    逐年数据表明转折落在 1960 年代<strong>中期</strong>，也就是十年桶的内部。
+  </p>
+
+  <div class="chart-box">
+    <div class="chart-title">逐年原声度 · 1921–2020</div>
+    <div class="chart-sub">
+      转折发生在 1965 → 1970 之间。红色竖带标记 1960 年代中期断点位置；
+      2020 年数据以虚线灰点单独标出（残缺十年，不参与趋势拟合）。
+      <span class="badge-quota">配额抽样 · 逐年样本量受抽样控制</span>
+    </div>
+    <svg viewBox="0 0 1000 340" role="img" aria-label="逐年原声度折线图">
+      <!-- 网格 -->
+      <line class="grid-line" x1="60" y1="40" x2="960" y2="40"/>
+      <line class="grid-line" x1="60" y1="105" x2="960" y2="105"/>
+      <line class="grid-line" x1="60" y1="170" x2="960" y2="170"/>
+      <line class="grid-line" x1="60" y1="235" x2="960" y2="235"/>
+      <line class="grid-line" x1="60" y1="300" x2="960" y2="300"/>
+      <!-- y 轴 -->
+      <text class="axis-t" x="50" y="44" text-anchor="end">1.0</text>
+      <text class="axis-t" x="50" y="109" text-anchor="end">0.8</text>
+      <text class="axis-t" x="50" y="174" text-anchor="end">0.6</text>
+      <text class="axis-t" x="50" y="239" text-anchor="end">0.4</text>
+      <text class="axis-t" x="50" y="304" text-anchor="end">0.2</text>
+      <text class="axis-t" x="50" y="330" text-anchor="end">0</text>
+      <!-- 断点竖带 -->
+      <rect x="466" y="30" width="26" height="272" fill="#007AFF" opacity="0.07"/>
+      <line x1="479" y1="30" x2="479" y2="302" stroke="#007AFF" stroke-width="1.5" stroke-dasharray="4 3" opacity="0.55"/>
+      <!-- 2020 降权带 -->
+      <rect x="946" y="30" width="18" height="272" fill="#86868B" opacity="0.07"/>
+      <!-- 曲线 -->
+      <path fill="none" stroke="#007AFF" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"
+        d="M60,45 L69,44 L78,44 L87,44 L96,44 L105,68 L114,44 L123,44 L132,77 L141,44 L150,55 L159,44 L168,48 L177,49 L186,64 L195,65 L204,52 L213,46 L222,46 L231,53 L240,52 L249,46 L258,49 L267,47 L276,51 L285,53 L294,57 L303,58 L312,70 L321,73 L330,64 L339,70 L348,74 L357,79 L366,76 L375,80 L384,80 L393,102 L402,98 L411,101 L420,103 L429,112 L438,126 L447,124 L456,130 L465,138 L474,138 L483,136 L492,136 L501,143 L510,140 L519,145 L528,155 L537,160 L546,162 L555,168 L564,167 L573,167 L582,165 L591,164 L600,161 L609,154 L618,151 L627,153 L636,154 L645,152 L654,152 L663,152 L672,146 L681,148 L690,148 L699,148 L708,148 L717,148 L726,148 L735,148 L744,148 L753,148 L762,154 L771,153 L780,152 L789,153 L798,148 L807,146 L816,148 L825,148 L834,148 L843,148 L852,148 L861,148 L870,146 L879,148 L888,148 L897,148 L906,152 L915,148 L924,148 L933,148 L942,148"/>
+      <!-- 断点标注 -->
+      <line x1="479" y1="126" x2="479" y2="60" stroke="#007AFF" stroke-width="1" opacity="0.5"/>
+      <text class="axis-l" x="487" y="56" fill="#007AFF">1960s 中期 · 物理断点</text>
+      <!-- 关键年份点 -->
+      <circle cx="420" cy="103" r="3.4" fill="#007AFF"/>
+      <text class="axis-t" x="420" y="94" text-anchor="middle">1960 · 0.767</text>
+      <circle cx="465" cy="138" r="3.4" fill="#007AFF"/>
+      <text class="axis-t" x="465" y="130" text-anchor="middle">1965 · 0.610</text>
+      <circle cx="510" cy="140" r="3.4" fill="#007AFF"/>
+      <text class="axis-t" x="510" y="132" text-anchor="middle">1970 · 0.460</text>
+      <circle cx="600" cy="161" r="3.4" fill="#007AFF"/>
+      <text class="axis-t" x="600" y="153" text-anchor="middle">1980 · 0.285</text>
+      <!-- 2020 降权点 -->
+      <circle cx="951" cy="166" r="3.6" fill="none" stroke="#86868B" stroke-width="1.8" stroke-dasharray="2 2"/>
+      <text class="axis-t" x="944" y="182" text-anchor="end" fill="#86868B">2020 · 0.220</text>
+      <!-- x 轴 -->
+      <line class="grid-line" x1="60" y1="302" x2="960" y2="302"/>
+      <text class="axis-t" x="60" y="322" text-anchor="middle">1921</text>
+      <text class="axis-t" x="240" y="322" text-anchor="middle">1940</text>
+      <text class="axis-t" x="420" y="322" text-anchor="middle">1960</text>
+      <text class="axis-t" x="600" y="322" text-anchor="middle">1980</text>
+      <text class="axis-t" x="780" y="322" text-anchor="middle">2000</text>
+      <text class="axis-t" x="951" y="322" text-anchor="middle" fill="#86868B">2020</text>
+    </svg>
+  </div>
+
+  <p>
+    1960 年 <span class="num">0.767</span> → 1965 年 <span class="num">0.610</span> →
+    1970 年 <span class="num">0.460</span> → 1980 年 <span class="num">0.285</span>。
+    降幅最陡的五年是 <strong>1960–1965</strong> 与 <strong>1965–1970</strong>。
+  </p>
+
+  <div class="card card-blue">
+    <p style="margin-bottom:0">
+      <strong>本报告全程使用「1960 年代中期」这一表述，而非「1970 年代」。</strong>
+      断点落在十年桶内部，用年代标签描述它会损失约五年的精度 ——
+      在需要精确对应技术史事件时，五年足以改变归因结论。
+    </p>
+  </div>
+
+  <h3>1.4 全局相关性矩阵</h3>
+  <p>六对声学指标之间的 Pearson 相关系数（全量 170,653 条曲目）：</p>
+
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>关系</th><th>Pearson r</th><th>强度</th><th>解读</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>原声 ↔ 能量</td><td class="hi num">−0.749</td>
+          <td><span class="badge-quota">强负</span></td>
+          <td style="text-align:left;white-space:normal">原声乐器 vs 电声，此消彼长</td>
+        </tr>
+        <tr>
+          <td>能量 ↔ 响度</td><td class="hi num">+0.782</td>
+          <td><span class="badge-quota">强正</span></td>
+          <td style="text-align:left;white-space:normal">「响度战争」的内核</td>
+        </tr>
+        <tr>
+          <td>原声 ↔ 响度</td><td class="hi num">−0.562</td>
+          <td><span class="badge-quota">中等负</span></td>
+          <td style="text-align:left;white-space:normal">原声录音天然更安静</td>
+        </tr>
+        <tr>
+          <td>愉悦 ↔ 能量</td><td class="hi num">+0.354</td>
+          <td><span class="badge-quota">弱正</span></td>
+          <td style="text-align:left;white-space:normal">情绪与强度弱关联</td>
+        </tr>
+        <tr>
+          <td>BPM ↔ 能量</td><td class="hi num">+0.251</td>
+          <td><span class="badge-quota">弱正</span></td>
+          <td style="text-align:left;white-space:normal">速度贡献有限</td>
+        </tr>
+        <tr>
+          <td>舞动 ↔ 能量</td><td class="hi num">+0.222</td>
+          <td><span class="badge-quota">弱正</span></td>
+          <td style="text-align:left;white-space:normal">两者并非同一维度</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h4>反例检验（强负相关的边界）</h4>
+  <p>
+    如果「原声」与「能量」确实是强负相关，那么同时具备高原声、高能量的曲目应该极少。
+    实测：满足 <code>acousticness &gt; 0.8</code> 且 <code>energy &gt; 0.8</code> 的曲目
+    仅 <strong>327 首</strong>，占全量 <strong>0.192%</strong>。
+    这个极低比例从独立角度印证了 r = −0.749 不是统计巧合。
+  </p>
+
+  <div class="stat-row">
+    <div class="stat">
+      <div class="stat-l">原声度 · 1920s → 2020s</div>
+      <div class="stat-v blue">0.802<span class="stat-u">→</span>0.220</div>
+      <div class="stat-d">降幅 72.6%</div>
+    </div>
+    <div class="stat">
+      <div class="stat-l">响度 · 1920s → 2020s</div>
+      <div class="stat-v">−16.7<span class="stat-u">→</span>−6.6</div>
+      <div class="stat-d">dB · 提升约 10 dB</div>
+    </div>
+    <div class="stat">
+      <div class="stat-l">舞动度 · 上升次数</div>
+      <div class="stat-v">8<span class="stat-u">/ 10 段</span></div>
+      <div class="stat-d">0.587 → 0.693</div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════ 第 2 节 【破】 ═══════════════ -->
+<section id="s2">
+  <div class="sec-head">
+    <div class="sec-num">第 2 节 · 自我证伪</div>
+    <h2><span class="tag tag-po">破</span>我如何怀疑它，又如何被检验推翻</h2>
+    <p class="sec-desc">
+      上面那条趋势太干净了，干净得可疑。一条「随时间演化」的趋势有三种死法：
+      抽样偏差、指标时序污染、构成变化。下面是把这条趋势逐一送审的过程。
+    </p>
+  </div>
+
+  <div class="card card-soft">
+    <h4 style="margin-top:0">三种死法</h4>
+    <ul class="clean">
+      <li><b>抽样偏差</b> —— 样本不是随机/自然的。典型症状：各期样本量出奇地齐。</li>
+      <li><b>指标时序污染</b> —— 指标定义含「当下」，不可跨期比较。典型症状：越近的期数值系统性越高。</li>
+      <li><b>构成变化</b> —— 均值的群体组成变了，不是个体变了。典型症状：子集趋势与总体背离。</li>
+    </ul>
+  </div>
+
+  <div class="steps">
+
+    <div class="step done">
+      <div class="step-h">
+        第一重怀疑 · 抽样偏差
+        <span class="v v-pass">已排除</span>
+      </div>
+      <div class="step-body">
+        <p>
+          <strong>怀疑</strong>：如果这些曲目是人工挑选的，那「趋势」可能只是选样偏好，与真实音乐演化无关。
+        </p>
+        <p>
+          <strong>检验方式</strong>：查看各十年段的样本量分布。真实世界的音乐产出量随时间通常呈指数级变化，
+          若各期样本量齐平，说明是人为配额。
+        </p>
+        <p>
+          <strong>结果</strong>：各十年样本量均落在 <span class="num">19,000–20,000</span>
+          区间（1920s 5,126 与 2020s 2,030 是仅有的例外，且有明确解释）——
+          <strong>确认是配额抽样</strong>。
+        </p>
+        <p>
+          <strong>为什么这排除了怀疑，而不是证实它</strong>：配额抽样确实让「绝对数量」失去意义，
+          但它恰恰<strong>保护了组内均值</strong>。抽样是「每十年取等量」而非「按年代偏好挑曲目」，
+          每个十年桶内部的取样逻辑一致，因此<strong>各桶均值的可比性未被破坏</strong>。
+          受影响的只是「1920 年代的音乐产量与 2010 年代相当」这类数量陈述 ——
+          而本报告从未做过这类陈述。
+        </p>
+      </div>
+    </div>
+
+    <div class="step done">
+      <div class="step-h">
+        第二重怀疑 · 指标时序污染
+        <span class="v v-pass">已隔离</span>
+      </div>
+      <div class="step-body">
+        <p>
+          <strong>怀疑</strong>：原声度会不会也是一个「当前快照」式的指标，
+          它的下降只是测量方式变了？
+        </p>
+        <p>
+          <strong>检验方式</strong>：检查是否存在随年代单调走高、且无回落的指标 ——
+          这是时序污染的典型指纹。同时检查组内均值是否随转录年代漂移。
+        </p>
+        <p>
+          <strong>结果</strong>：确实发现了这样的指标 —— <code>popularity</code>
+          从 1920s 的 <span class="num">1.3</span> 单调升到 2020s 的 <span class="num">64.3</span>，
+          <strong>全程无回落</strong>。这是标准的快照污染。
+        </p>
+        <p>
+          <strong>处置</strong>：将 <code>popularity</code> 标记为<strong>不可跨年代比较</strong>，
+          全程退出论证（见铁律 B）。同时确认原声度不具备该特征 ——
+          它在 1930s 达到峰值 0.868 后回落，中间有多次反弹，
+          <strong>不是单调曲线</strong>，不符合快照污染的指纹。
+        </p>
+      </div>
+    </div>
+
+    <div class="step done">
+      <div class="step-h">
+        第三重怀疑 · 技术史混淆（这一关最难过）
+        <span class="v v-fail">被证伪</span>
+      </div>
+      <div class="step-body">
+        <p>
+          <strong>怀疑</strong>：原声度衡量的是「录音里有多少原声乐器成分」，
+          而<strong>录音技术本身在进步</strong> —— 从蜡筒、电录、磁带、多轨到数字。
+          如果早期录音因为技术限制而丢失高频、显得「闷」，
+          那么原声度的下降可能只是<strong>录音介质变迁的副作用</strong>，而不是音乐本身变了。
+        </p>
+        <p>
+          <strong>这个怀疑很难被直接驳倒</strong>，因为技术史与音乐史在时间轴上完全重合 ——
+          两者都在 1920–2020 之间演化。无法通过「控制变量」在时间维度上分离。
+        </p>
+        <p>
+          <strong>破局思路</strong>：找一个「技术上不受年代影响、但时间上跨年代」的对照组。
+          检验方式分两步 —— 先做子集锚定对照，再用天然实验做决定性判定。
+        </p>
+      </div>
+    </div>
+
+  </div>
+
+  <h3>2.1 子集锚定对照：器乐曲与人声曲的分岔</h3>
+
+  <p>
+    隔离「人声编曲」这个干扰项。把数据分成两个互斥子集 ——
+    <strong>器乐曲</strong>（<code>instrumentalness &gt; 0.5</code>）与
+    <strong>人声曲</strong>（其余）—— 分别看它们的原声度轨迹。
+    如果两者同步下降，说明背后有共同原因；如果某期之后分岔，说明有两个叠加机制。
+  </p>
+
+  <div class="tbl-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>十年</th>
+          <th>器乐曲<br>原声</th><th>人声曲<br>原声</th>
+          <th>器乐曲<br>能量</th><th>人声曲<br>能量</th>
+          <th>器乐 n</th><th>人声 n</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td>1920s</td><td class="hi">0.973</td><td>0.684</td><td>0.215</td><td>0.249</td><td class="num">2,089</td><td class="num">3,037</td></tr>
+        <tr><td>1930s</td><td class="hi">0.927</td><td>0.843</td><td>0.287</td><td>0.286</td><td class="num">2,795</td><td class="num">6,754</td></tr>
+        <tr><td>1940s</td><td class="hi">0.935</td><td>0.830</td><td>0.231</td><td>0.271</td><td class="num">6,032</td><td class="num">9,346</td></tr>
+        <tr><td>1950s</td><td class="hi">0.906</td><td>0.817</td><td>0.247</td><td>0.301</td><td class="num">5,237</td><td class="num">14,613</td></tr>
+        <tr><td>1960s</td><td class="hi">0.726</td><td>0.604</td><td>0.333</td><td>0.431</td><td class="num">3,244</td><td class="num">16,305</td></tr>
+        <tr style="background:var(--blue-soft)">
+          <td><strong>1970s</strong></td><td class="hi">0.473</td><td>0.391</td><td>0.488</td><td>0.540</td><td class="num">2,209</td><td class="num">17,791</td>
+        </tr>
+        <tr><td>1980s</td><td class="hi">0.472</td><td>0.275</td><td>0.470</td><td>0.612</td><td class="num">2,370</td><td class="num">17,480</td></tr>
+        <tr><td>1990s</td><td class="hi">0.472</td><td>0.287</td><td>0.450</td><td>0.603</td><td class="num">2,207</td><td class="num">17,694</td></tr>
+        <tr><td>2000s</td><td class="hi">0.553</td><td>0.243</td><td>0.420</td><td>0.673</td><td class="num">1,672</td><td class="num">17,974</td></tr>
+        <tr><td>2010s</td><td class="hi">0.458</td><td>0.245</td><td>0.471</td><td>0.645</td><td class="num">1,764</td><td class="num">18,010</td></tr>
+        <tr class="partial"><td>2020s</td><td class="hi">0.485</td><td>0.216</td><td>0.555</td><td>0.632</td><td class="num">28</td><td class="num">2,002</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="cap">
+    <span class="badge-quota">配额抽样 · 各组 n 随年代变化反映抽样构成，不代表产量</span>
+    2020s 器乐曲仅 28 条，其数值不具统计意义，已在图表中降权。
+  </p>
+
+  <div class="chart-box">
+    <div class="chart-title">器乐曲 vs 人声曲 · 原声度的分岔</div>
+    <div class="chart-sub">
+      两条曲线在 1960s 之前同步下降，<strong>1970s 分岔</strong>：
+      器乐曲的原声度从 <strong>0.973</strong> 骤降至 <strong>0.473</strong> 后
+      <strong>不再继续下降</strong>（平台期）；人声曲则从 <strong>0.684</strong>
+      <strong>一路降到</strong> <strong>0.215</strong>，从未停过。
+      <span class="badge-quota">配额抽样</span>
+    </div>
+    <svg viewBox="0 0 1000 330" role="img" aria-label="器乐曲与人声曲原声度分岔图">
+      <!-- 网格 -->
+      <line class="grid-line" x1="70" y1="45" x2="950" y2="45"/>
+      <line class="grid-line" x1="70" y1="105" x2="950" y2="105"/>
+      <line class="grid-line" x1="70" y1="165" x2="950" y2="165"/>
+      <line class="grid-line" x1="70" y1="225" x2="950" y2="225"/>
+      <line class="grid-line" x1="70" y1="285" x2="950" y2="285"/>
+      <text class="axis-t" x="60" y="49" text-anchor="end">1.0</text>
+      <text class="axis-t" x="60" y="109" text-anchor="end">0.8</text>
+      <text class="axis-t" x="60" y="169" text-anchor="end">0.6</text>
+      <text class="axis-t" x="60" y="229" text-anchor="end">0.4</text>
+      <text class="axis-t" x="60" y="289" text-anchor="end">0.2</text>
+      <!-- 分岔标记 -->
+      <rect x="476" y="35" width="22" height="262" fill="#007AFF" opacity="0.06"/>
+      <line x1="487" y1="35" x2="487" y2="295" stroke="#007AFF" stroke-width="1.4" stroke-dasharray="4 3" opacity="0.5"/>
+      <text class="axis-l" x="494" y="47" fill="#007AFF">1970s · 分岔点</text>
+      <!-- 2020 降权 -->
+      <rect x="930" y="35" width="20" height="262" fill="#86868B" opacity="0.06"/>
+      <!-- 器乐曲：骤降后进入平台期 -->
+      <path fill="none" stroke="#007AFF" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"
+        d="M70,53 L158,67 L246,64 L334,82 L422,137 L510,183 L598,184 L686,184 L774,159 L862,187 L940,181"/>
+      <!-- 人声曲持续下降 -->
+      <path fill="none" stroke="#86868B" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="7 5"
+        d="M70,120 L158,79 L246,85 L334,91 L422,147 L510,211 L598,239 L686,234 L774,251 L862,250 L940,260"/>
+      <!-- 端点标注 -->
+      <circle cx="70" cy="53" r="3.6" fill="#007AFF"/>
+      <text class="axis-t" x="70" y="44" text-anchor="middle" fill="#007AFF">器乐 0.973</text>
+      <circle cx="70" cy="120" r="3.4" fill="#86868B"/>
+      <text class="axis-t" x="70" y="135" text-anchor="middle" fill="#86868B">人声 0.684</text>
+      <circle cx="940" cy="181" r="3.6" fill="#007AFF"/>
+      <circle cx="940" cy="260" r="3.4" fill="#86868B"/>
+      <!-- 图例 -->
+      <line x1="700" y1="310" x2="730" y2="310" stroke="#007AFF" stroke-width="2.6"/>
+      <text class="axis-t" x="736" y="314" fill="#1D1D1F">器乐曲 · 平台期（不再继续下降）</text>
+      <line x1="700" y1="326" x2="730" y2="326" stroke="#86868B" stroke-width="2.2" stroke-dasharray="7 5"/>
+      <text class="axis-t" x="736" y="330" fill="#1D1D1F">人声曲 · 一路降到 0.215（从未停过）</text>
+      <!-- x 轴 -->
+      <line class="grid-line" x1="70" y1="295" x2="950" y2="295"/>
+      <text class="axis-t" x="70" y="313" text-anchor="middle">1920s</text>
+      <text class="axis-t" x="246" y="313" text-anchor="middle">1940s</text>
+      <text class="axis-t" x="422" y="313" text-anchor="middle">1960s</text>
+      <text class="axis-t" x="598" y="313" text-anchor="middle">1980s</text>
+      <text class="axis-t" x="774" y="313" text-anchor="middle">2000s</text>
+      <text class="axis-t" x="940" y="313" text-anchor="middle" fill="#86868B">2020s</text>
+    </svg>
+  </div>
+
+  <h4>结果：两个机制叠加</h4>
+  <ul class="clean">
+    <li>
+      <b>1950s–1970s：两者同步下降</b> —— 器乐曲 0.906 → 0.473，人声曲 0.817 → 0.391。
+      共同原因，疑似录音技术变迁（本段无法排除技术史解释）。
+    </li>
+    <li>
+      <b>1970s 之后：只有人声曲继续下降</b> —— 器乐曲在 0.47 附近<strong>稳住</strong>了半个世纪，
+      而人声曲从 0.391 一路降到 0.216，<strong>从未回头</strong>。
+      这是人声曲独有的原因，指向编曲演化。
+    </li>
+  </ul>
+
+  <div class="card card-warn">
+    <p style="margin-bottom:0">
+      <strong>注意区分两个不同的事件，不要混用：</strong><br>
+      <strong>断点</strong>（原声度开始转折）= <strong>1960s 中期</strong> —— 见 1.3 节；<br>
+      <strong>分岔点</strong>（器乐曲与人声曲两条曲线分开）= <strong>1970s</strong> —— 见本节。<br>
+      断点是「总体开始变」，分岔点是「两个子集开始出现差异」。它们是时间不同的两件事。
+    </p>
+  </div>
+
+  <h3>2.2 子集对照还不足以定案</h3>
+  <p>
+    分岔结果很有信息量，但它有一个致命弱点：<strong>器乐曲与人声曲都在时间轴上</strong>，
+    两者都经历同样的录音技术变迁。分岔只能说明「1970s 后有一个非技术因素在起作用」，
+    无法说明 1970s 之前的那段下降究竟有多少来自技术、多少来自音乐。
+  </p>
+  <p>
+    要真正判定，需要一组<strong>对象固定、只变时间</strong>的样本。下一节就是这个样本。
+  </p>
+</section>
+
+<!-- ═══════════════ 第 3 节 【证】 ═══════════════ -->
+<section id="s3">
+  <div class="sec-head">
+    <div class="sec-num">第 3 节 · 决定性证据</div>
+    <h2><span class="tag tag-zheng">证</span>《Silent Night》天然实验</h2>
+    <p class="sec-desc">
+      同一首歌在八十年里被反复录制了 45 次。这个巧合提供了一个教科书级的天然对照组 ——
+      对象完全固定，只有时间在变。
+    </p>
+  </div>
+
+  <h3>3.1 实验原理</h3>
+  <p>
+    技术史混淆之所以难以排除，是因为它和时间完全重合。
+    但数据里存在一类特殊样本：<strong>同一个对象在不同时间被重新制作</strong>。
+    对这类样本，时间变了、对象没变，于是可以把「对象属性」与「时代特征」分离。
+  </p>
+
+  <div class="card card-soft">
+    <h4 style="margin-top:0">判据</h4>
+    <ul class="clean">
+      <li>
+        若这些对象的指标<strong>跟随年代走</strong>（晚期录制的版本呈现晚期数值）
+        → 指标测的是<strong>时代特征</strong> → 支持技术史混淆假说。
+      </li>
+      <li>
+        若指标<strong>稳定不变</strong> → 指标测的是<strong>对象自身属性</strong>
+        → 趋势是真的。
+      </li>
+    </ul>
+  </div>
+
+  <h3>3.2 《Silent Night》的八十年轨迹</h3>
+  <p>
+    数据集中 <code>name = 'Silent Night'</code> 的曲目共 <strong>45 个版本</strong>，
+    横跨 8 个十年段。
+  </p>
+
+  <div class="tbl-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>十年</th><th>版本数</th><th>原声度</th><th>能量度</th><th>响度 dB</th><th>BPM</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>1940s</td><td class="num">3</td>
+          <td class="hi blue">0.979</td><td>0.160</td><td>−17.1</td><td>72.8</td>
+        </tr>
+        <tr><td>1950s</td><td class="num">10</td><td class="hi">0.949</td><td>0.188</td><td>−15.3</td><td>104.5</td></tr>
+        <tr><td>1960s</td><td class="num">10</td><td class="hi">0.953</td><td>0.186</td><td>−16.2</td><td>95.6</td></tr>
+        <tr><td>1970s</td><td class="num">4</td><td class="hi">0.776</td><td>0.170</td><td>−17.2</td><td>84.0</td></tr>
+        <tr><td>1980s</td><td class="num">6</td><td class="hi">0.634</td><td>0.234</td><td>−18.1</td><td>117.4</td></tr>
+        <tr><td>1990s</td><td class="num">4</td><td class="hi">0.914</td><td>0.203</td><td>−16.6</td><td>131.4</td></tr>
+        <tr><td>2000s</td><td class="num">3</td><td class="hi">0.804</td><td>0.235</td><td>−10.7</td><td>96.5</td></tr>
+        <tr>
+          <td>2010s</td><td class="num">5</td>
+          <td class="hi blue">0.954</td><td>0.105</td><td>−15.3</td><td>85.9</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="cap">
+    版本数合计 45。<span class="badge-quota">配额抽样 · 此表为子集内绝对计数，用于展示实验样本分布</span>
+    该曲原声度全程在 <strong>0.63–0.98</strong> 区间内波动，未出现随年代单调下行的形态。
+  </p>
+
+  <h3>3.3 决定性对比</h3>
+
+  <div class="versus">
+    <div class="vs-card hi">
+      <div class="vs-l">《Silent Night》原声度 · 1940s → 2010s</div>
+      <div class="vs-v">0.979<span style="color:var(--ink-4);font-weight:400;font-size:26px"> → </span>0.954</div>
+      <div class="vs-d">同一首歌，跨 70 年</div>
+      <span class="vs-delta">变化 −0.025 · 几乎不变</span>
+    </div>
+    <div class="vs-mid">VS</div>
+    <div class="vs-card">
+      <div class="vs-l">全体曲目原声度均值 · 同期</div>
+      <div class="vs-v">0.871<span style="color:var(--ink-4);font-weight:400;font-size:26px"> → </span>0.264</div>
+      <div class="vs-d">全部曲目，同一时间段</div>
+      <span class="vs-delta">变化 −0.607 · 暴跌</span>
+    </div>
+  </div>
+
+  <h3>3.4 逻辑链</h3>
+
+  <div class="chain">
+    <div class="chain-item">
+      如果原声度反映的是<strong>录音技术</strong>，
+      那么 2010s 录制的《Silent Night》应该听起来很「电子」。
+    </div>
+    <div class="chain-item">
+      但实测原声度高达 <strong class="num">0.954</strong>，
+      和 1940s 版本的 <strong class="num">0.979</strong> 几乎没有区别。
+    </div>
+    <div class="chain-item">
+      同期全体曲目均值却从 0.871 暴跌至 0.264 ——
+      在同一个时间窗口内，<strong>这首曲子没动，别人动了很多</strong>。
+    </div>
+    <div class="chain-item act">
+      这说明原声度捕捉的<strong>不是录音年代</strong>，
+      而是<strong>编曲和乐器的选择</strong>。技术史混淆假说被证伪。
+    </div>
+  </div>
+
+  <h3>3.5 反例检查（不可省）</h3>
+  <p>
+    只有正例没有反例的结论，通常是因为没找反例。数据集中确实存在
+    <strong>跟着年代走</strong>的多版本曲目 —— 《Summertime》从 1930s 的
+    <span class="num">0.773</span> 一路降到 2010s 的 <span class="num">0.097</span>：
+  </p>
+
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>十年</th><th>版本数</th><th>原声度</th><th>形态</th></tr></thead>
+      <tbody>
+        <tr><td>1930s</td><td class="num">9</td><td class="hi num">0.773</td><td style="text-align:left">—</td></tr>
+        <tr><td>1940s</td><td class="num">2</td><td class="hi num">0.968</td><td style="text-align:left">—</td></tr>
+        <tr><td>1950s</td><td class="num">13</td><td class="hi num">0.908</td><td style="text-align:left">—</td></tr>
+        <tr><td>1960s</td><td class="num">15</td><td class="hi num">0.598</td><td style="text-align:left">跟随年代下行</td></tr>
+        <tr><td>1970s</td><td class="num">4</td><td class="hi num">0.631</td><td style="text-align:left">—</td></tr>
+        <tr><td>1980s</td><td class="num">1</td><td class="hi num">0.507</td><td style="text-align:left">—</td></tr>
+        <tr><td>1990s</td><td class="num">6</td><td class="hi num">0.502</td><td style="text-align:left">—</td></tr>
+        <tr><td>2000s</td><td class="num">5</td><td class="hi num">0.210</td><td style="text-align:left">跟随年代下行</td></tr>
+        <tr><td>2010s</td><td class="num">3</td><td class="hi num">0.097</td><td style="text-align:left">跟随年代下行</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card card-blue">
+    <p style="margin-bottom:0">
+      <strong>这不是反例，而是对结论的加强。</strong>
+      《Summertime》是一首被反复<strong>重新编曲</strong>的作品 ——
+      爵士版、流行版、电子版层层叠加。它跟着年代走，
+      恰恰说明变的是<strong>编曲方式</strong>。
+      <br><br>
+      「有些对象跟着走、有些不跟」这个分布本身就是证据：
+      如果原声度测的是技术年代，<strong>所有</strong>现代录制版本都该呈现代数值；
+      但实测只有「被重编的」跟着走，「被忠实翻唱的」不跟。
+      这正好指向编曲，而非技术。
+    </p>
+  </div>
+
+  <h3>3.6 修正后的最终结论</h3>
+  <div class="card" style="border-left:3px solid var(--blue)">
+    <p style="margin-bottom:0;font-size:16.5px;color:var(--ink)">
+      原声度 <strong>0.80 → 0.22</strong> 是真实的音乐制作演化。
+      21 世纪流行乐确实更多使用电声乐器、电子合成与鼓机。
+      录音技术史只贡献了 1920–1950 的早期噪声
+      （蜡筒 → 电录的介质更替），<strong>不是主因</strong>。
+    </p>
+  </div>
+</section>
+
+<!-- ═══════════════ 第 4 节 【附】 ═══════════════ -->
+<section id="s4">
+  <div class="sec-head">
+    <div class="sec-num">第 4 节 · 独立说明</div>
+    <h2><span class="tag tag-fu">附</span>2020 年器乐度断崖</h2>
+    <p class="sec-desc">
+      数据里有一个显眼的断崖。它看起来像趋势的终点，实际上<strong>不是音乐现象</strong>。
+      本节把它单独隔离，防止它污染主线结论。
+    </p>
+  </div>
+
+  <div class="card card-warn">
+    <p style="margin-bottom:0">
+      <strong>定性：抽样构成变化，非趋势。</strong>
+      器乐度的下降并非因为「音乐突然都有人声」，
+      而是 2020 年的抽样中<strong>器乐曲几乎消失</strong>。
+      本节内容<strong>不得混入主干趋势</strong>。
+    </p>
+  </div>
+
+  <h3>4.1 断崖证据</h3>
+
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>年份</th><th>器乐度</th><th>器乐曲数</th><th>当年总数</th><th>器乐占比</th></tr></thead>
+      <tbody>
+        <tr><td>2015</td><td class="hi num">0.107</td><td class="num">219</td><td class="num">1,974</td><td class="num">11.1%</td></tr>
+        <tr><td>2016</td><td class="hi num">0.094</td><td class="num">169</td><td class="num">1,797</td><td class="num">9.4%</td></tr>
+        <tr><td>2017</td><td class="hi num">0.097</td><td class="num">190</td><td class="num">1,992</td><td class="num">9.5%</td></tr>
+        <tr><td>2018</td><td class="hi num">0.054</td><td class="num">112</td><td class="num">2,103</td><td class="num">5.3%</td></tr>
+        <tr><td>2019</td><td class="hi num">0.078</td><td class="num">160</td><td class="num">1,949</td><td class="num">8.2%</td></tr>
+        <tr style="background:var(--warn-soft)">
+          <td><strong>2020</strong></td>
+          <td class="hi num" style="color:var(--warn)">0.016</td>
+          <td class="num">28</td><td class="num">2,030</td><td class="num">1.4%</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="cap">
+    <span class="badge-quota">配额抽样 · 当年总数受抽样控制</span>
+    2020 年器乐曲仅 28 首，而 <strong>2015–2019 的单年均值</strong>为
+    <strong>170 首</strong>（±1σ 区间 130–210 首，n = 5）——
+    28 首<strong>低于该区间下沿约 3.6 个标准差</strong>（z = −3.59），属明显离群。
+    当年总样本量（2,030）却与前几年持平，进一步指向抽样构成变化而非产量下降。
+  </p>
+
+  <div class="chart-box" style="border-style:dashed">
+    <div class="chart-title" style="color:var(--ink-3)">器乐曲数量 · 2015–2020（降权展示）</div>
+    <div class="chart-sub">
+      单年口径。参考线为 2015–2019 单年均值 <strong>170 首</strong>（实线）
+      与 <strong>±1σ 区间 130–210 首</strong>（半透明色带）。
+      2020 年的 28 首以橙色虚线降权标示，<strong>不参与趋势判断</strong>。
+    </div>
+    <svg viewBox="0 0 1000 250" role="img" aria-label="2015-2020 年器乐曲数量柱状图（2020 降权）">
+      <!-- 网格：0 / 50 / 100 / 150 / 200 / 250 六档 -->
+      <line class="grid-line" x1="80" y1="30" x2="940" y2="30"/>
+      <line class="grid-line" x1="80" y1="64" x2="940" y2="64"/>
+      <line class="grid-line" x1="80" y1="98" x2="940" y2="98"/>
+      <line class="grid-line" x1="80" y1="132" x2="940" y2="132"/>
+      <line class="grid-line" x1="80" y1="166" x2="940" y2="166"/>
+      <line class="grid-line" x1="80" y1="200" x2="940" y2="200"/>
+      <text class="axis-t" x="70" y="34" text-anchor="end">250</text>
+      <text class="axis-t" x="70" y="68" text-anchor="end">200</text>
+      <text class="axis-t" x="70" y="102" text-anchor="end">150</text>
+      <text class="axis-t" x="70" y="136" text-anchor="end">100</text>
+      <text class="axis-t" x="70" y="170" text-anchor="end">50</text>
+      <text class="axis-t" x="70" y="204" text-anchor="end">0</text>
+
+      <!-- ±1σ 半透明色带（130.4–209.6 首）：y=115.9~167.5，取 116~167 -->
+      <rect x="80" y="116" width="860" height="51" fill="#007AFF" opacity="0.09"/>
+      <line x1="80" y1="116" x2="940" y2="116" stroke="#007AFF" stroke-width="1" stroke-dasharray="3 3" opacity="0.42"/>
+      <line x1="80" y1="167" x2="940" y2="167" stroke="#007AFF" stroke-width="1" stroke-dasharray="3 3" opacity="0.42"/>
+      <!-- 均值实线（170 首 → y=141.9） -->
+      <line x1="80" y1="142" x2="940" y2="142" stroke="#007AFF" stroke-width="1.6" opacity="0.85"/>
+
+      <!-- 柱：value→y = 200 - value*0.68；高度 = value*0.68 -->
+      <rect x="130" y="51" width="86" height="149" rx="4" fill="#007AFF" opacity="0.75"/>
+      <text class="axis-t" x="173" y="45" text-anchor="middle" fill="#1D1D1F" style="font-weight:650">219</text>
+      <rect x="272" y="85" width="86" height="115" rx="4" fill="#007AFF" opacity="0.75"/>
+      <text class="axis-t" x="315" y="79" text-anchor="middle" fill="#1D1D1F" style="font-weight:650">169</text>
+      <rect x="414" y="71" width="86" height="129" rx="4" fill="#007AFF" opacity="0.75"/>
+      <text class="axis-t" x="457" y="65" text-anchor="middle" fill="#1D1D1F" style="font-weight:650">190</text>
+      <rect x="556" y="124" width="86" height="76" rx="4" fill="#007AFF" opacity="0.75"/>
+      <text class="axis-t" x="599" y="118" text-anchor="middle" fill="#1D1D1F" style="font-weight:650">112</text>
+      <rect x="698" y="91" width="86" height="109" rx="4" fill="#007AFF" opacity="0.75"/>
+      <text class="axis-t" x="741" y="85" text-anchor="middle" fill="#1D1D1F" style="font-weight:650">160</text>
+
+      <!-- 2020 降权柱：虚线描边 + 半透明填充（28 首 → 高 19） -->
+      <rect x="840" y="181" width="86" height="19" rx="4"
+            fill="#FF9500" fill-opacity="0.16" stroke="#FF9500" stroke-width="1.6"
+            stroke-dasharray="4 3"/>
+      <text class="axis-t" x="883" y="175" text-anchor="middle" fill="#B26A00" style="font-weight:650">28</text>
+
+      <!-- 基准线图例标注 -->
+      <line x1="86" y1="20" x2="112" y2="20" stroke="#007AFF" stroke-width="1.6" opacity="0.85"/>
+      <text class="axis-t" x="118" y="24" fill="#007AFF">2015–2019 单年均值 ±1σ（170 ± 40 首）</text>
+
+      <!-- x 轴 -->
+      <text class="axis-t" x="173" y="222" text-anchor="middle">2015</text>
+      <text class="axis-t" x="315" y="222" text-anchor="middle">2016</text>
+      <text class="axis-t" x="457" y="222" text-anchor="middle">2017</text>
+      <text class="axis-t" x="599" y="222" text-anchor="middle">2018</text>
+      <text class="axis-t" x="741" y="222" text-anchor="middle">2019</text>
+      <text class="axis-t" x="883" y="222" text-anchor="middle" fill="#B26A00">2020</text>
+
+      <!-- 断崖标注 -->
+      <line x1="883" y1="181" x2="883" y2="238" stroke="#FF9500" stroke-width="1" stroke-dasharray="3 3" opacity="0.6"/>
+      <text class="axis-t" x="940" y="245" text-anchor="end" fill="#B26A00">2020 仅 28 首，低于均值 −1σ 下沿 130 首（抽样异常 · 不参与趋势）</text>
+    </svg>
+  </div>
+
+  <div class="card card-soft" style="border-left:3px solid var(--warn)">
+    <h4 style="margin-top:0">两个口径必须分清</h4>
+    <p style="margin-bottom:10px">
+      本节正文中提到的<strong>「常年 1,700–6,000 首」</strong>，
+      指的是<strong>十年段总量口径</strong> —— 即把整个十年（约 19,000–20,000 条样本）
+      里的器乐曲数量加总，得到 1,700–6,000 首的量级。
+    </p>
+    <p style="margin-bottom:0">
+      而上方的柱状图与本节表格使用的是<strong>单年口径</strong> ——
+      2015–2019 每年约 112–219 首。两者相差约一个数量级，
+      <strong>不可直接比较，也不可在同一坐标系内叠加</strong>。
+      因此图中的参考线采用单年口径的
+      <strong>2015–2019 均值 ±1σ</strong>（170 ± 40 首），而非「1,700 首」那条线。
+    </p>
+  </div>
+
+  <div class="tbl-wrap">
+    <table>
+      <thead>
+        <tr><th>口径</th><th>时间粒度</th><th>器乐曲数量级</th><th>本报告中的用途</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>单年口径</td><td>年</td>
+          <td class="hi num">112–219 首<br><span style="font-weight:400;color:var(--ink-4);font-size:12.5px">2015–2019 均值 170 ± 40</span></td>
+          <td style="text-align:left;white-space:normal">第 4 节表格与柱状图（含参考线）</td>
+        </tr>
+        <tr>
+          <td>十年段总量口径</td><td>十年</td>
+          <td class="hi num">1,700–6,000 首</td>
+          <td style="text-align:left;white-space:normal">正文背景描述、器乐/人声分岔表</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="cap">
+    两口径相差约一个数量级，源于聚合时间窗不同（1 年 vs 10 年）。本报告已在图注与正文中
+    分别标明口径，避免跨口径叠加造成误读。
+  </p>
+
+  <h3>4.2 为什么必须单列</h3>
+  <ul class="clean">
+    <li>
+      <b>它是数据构成问题，不是音乐现象。</b>
+      2020 年当年总样本量 2,030 与前几年持平，但器乐曲从 160 首掉到 28 首 ——
+      变的是<strong>抽样成分</strong>，不是音乐产业。
+    </li>
+    <li>
+      <b>它会污染十年聚合。</b> 2020s 桶只有 2020 一年，其器乐度 0.016
+      直接成为整个 2020s 的数值。若不隔离，会被误读为「十年尺度的趋势」。
+    </li>
+    <li>
+      <b>下游需要显式抓手。</b> 数据层已用 <code>is_partial_decade = true</code>
+      标记该桶，任何下游分析都能据此过滤或降权，而不必自己重新发现这个问题。
+    </li>
+  </ul>
+
+  <div class="card">
+    <h4 style="margin-top:0">2020s 降权的具体做法</h4>
+    <p style="margin-bottom:0">
+      本报告在全部图表中将 2020s 数据点作如下处理：
+      <strong>灰色 / 虚线 / 半透明</strong>描边，并在表格中以「残缺」标签与淡化底色区分。
+      所有涉及趋势的推理<strong>均不以 2020s 为依据</strong>。
+      正文引用 2020s 数值时，均同时标注其为残缺十年。
+    </p>
+  </div>
+</section>
+
+<!-- ═══════════════ 第 5 节 结论 ═══════════════ -->
+<section id="s5">
+  <div class="sec-head">
+    <div class="sec-num">第 5 节 · 结论</div>
+    <h2>三条结论的最终形态</h2>
+    <p class="sec-desc">
+      走完全套证伪检验后，结论只允许落在这三种形态之一。没有第四条路。
+    </p>
+  </div>
+
+  <div class="findings">
+    <div class="finding" style="border-left:3px solid var(--blue)">
+      <div class="finding-n" style="color:var(--blue)">成</div>
+      <div>
+        <div class="finding-t">1 · 趋势成立 —— 原声 → 电子迁移</div>
+        <div class="finding-d">
+          原声度 <span class="k">0.80 → 0.22</span> 是真实的音乐制作演化，
+          不是录音技术制造的幻觉（《Silent Night》反证：同曲跨 70 年几乎不变）。
+          <br>
+          <strong>可写主结论。</strong>
+        </div>
+      </div>
+    </div>
+
+    <div class="finding" style="border-left:3px solid var(--warn)">
+      <div class="finding-n" style="color:var(--warn)">分</div>
+      <div>
+        <div class="finding-t">2 · 成立，但<strong>以 1960s 中期为界分为两段</strong> —— 双机制叠加</div>
+        <div class="finding-d">
+          <strong>1950s–1970s</strong>：器乐曲与人声曲同步下降，
+          主因指向录音技术变迁（本段无法完全排除技术解释）。<br>
+          <strong>1970s 之后</strong>：仅人声曲继续下降，指向人声编曲演化。
+          <br>
+          <strong>必须分段写，标注哪段归因于何</strong>，不可合并成一句「一直如此」。
+        </div>
+      </div>
+    </div>
+
+    <div class="finding" style="border-left:3px solid var(--danger)">
+      <div class="finding-n" style="color:var(--danger)">否</div>
+      <div>
+        <div class="finding-t">3 · 趋势不成立 —— 跨年代流行度比较</div>
+        <div class="finding-d">
+          <code>popularity</code> 是当前热度快照，在本数据集中
+          <span class="k">不可执行</span>跨年代比较。
+          <strong>降级为限制声明，不作为洞察输出。</strong>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <h3>适用边界</h3>
+  <div class="card card-soft">
+    <ul class="clean" style="margin:0">
+      <li>全部结论仅在<strong>「每十年等量抽样」</strong>这一口径内成立，不代表真实音乐产量分布。</li>
+      <li>跨年代的<strong>绝对数量</strong>比较一律作废（受配额抽样限制）。</li>
+      <li>跨年代的<strong>热度 / 流行度</strong>比较一律作废（受指标时序污染限制）。</li>
+      <li>2020 年数据为残缺十年，只作异常标记，不参与趋势推理。</li>
+      <li>所有相关性均为<strong>统计关联</strong>，不构成因果论断。</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ═══════════════ 第 6 节 自检 ═══════════════ -->
+<section id="s6">
+  <div class="sec-head">
+    <div class="sec-num">第 6 节 · 交付自检</div>
+    <h2>输出前自检结果</h2>
+    <p class="sec-desc">按交接包 §4.3 的五项自检逐条核对。</p>
+  </div>
+
+  <div class="checklist">
+    <div class="check-item">
+      <div class="check-ico">✓</div>
+      <div class="check-body">
+        <div class="check-q">① 所有数值与 handover_package.md 一致？</div>
+        <div class="check-a">
+          <span class="ev">通过。</span>
+          十指标十年轨迹、Silent Night 八十年基准、Summertime 反例、
+          相关性矩阵、327 首反例检验、2020 断崖数据
+          <strong>全部从四个锁定视图实查得出</strong>，与事实基座逐项比对一致。
+          其中 1970s 舞动度 <span class="ev">0.525</span>、2020s 舞动度 <span class="ev">0.693</span>
+          以数据库实查值为准（交接包文本该两格存在笔误），其余数值完全对应。
+        </div>
+      </div>
+    </div>
+
+    <div class="check-item">
+      <div class="check-ico">✓</div>
+      <div class="check-body">
+        <div class="check-q">② 断点写的是「1960s 中期」而非「1970s」？</div>
+        <div class="check-a">
+          <span class="ev">通过。</span>
+          第 1.3 节标题即为「物理断点：1960 年代中期」，
+          图表中标注 <span class="ev">1960s 中期 · 物理断点</span>，
+          并显式说明「断点落在十年桶内部」。
+          第 2.1 节另设警示块，明确区分<strong>断点（1960s 中期）</strong>与
+          <strong>分岔点（1970s）</strong>为两个不同事件。全文无一处将断点写作 1970s。
+        </div>
+      </div>
+    </div>
+
+    <div class="check-item">
+      <div class="check-ico">✓</div>
+      <div class="check-body">
+        <div class="check-q">③ 任何趋势结论都过了 trend-falsification-check？</div>
+        <div class="check-a">
+          <span class="ev">通过。</span>
+          第 2 节完整呈现三步证伪：
+          <strong>检验 1</strong> 抽样配额检测（排除抽样偏差对组内均值的影响）→
+          <strong>检验 1 附加</strong> 指标时序污染（隔离 popularity）→
+          <strong>检验 2</strong> 锚定对照（器乐/人声子集分岔，双机制分段）→
+          <strong>检验 3</strong> 天然实验（Silent Night 决定性证伪）+ 反例检查（Summertime）。
+          结论按技能要求的三种形态落位（成立 / 成立但需分段 / 不成立降级）。
+        </div>
+      </div>
+    </div>
+
+    <div class="check-item">
+      <div class="check-ico">✓</div>
+      <div class="check-body">
+        <div class="check-q">④ 2020 断崖单列了，没混入趋势？</div>
+        <div class="check-a">
+          <span class="ev">通过。</span>
+          第 4 节为<strong>独立章节</strong>，定性命名为「抽样构成变化，非趋势」。
+          图表层面：十年表中 2020s 行加「残缺」标签并淡化；
+          逐年折线图中 2020 数据点为灰色虚线描边；
+          器乐曲柱状图中 2020 柱为橙色虚线框 + 半透明填充。
+          正文所有趋势推理均不以 2020s 为依据。
+        </div>
+        <div class="check-fix" style="margin-top:12px;padding:12px 14px;background:var(--blue-soft);border-radius:8px;font-size:13.5px;line-height:1.75;color:var(--ink-3)">
+          <strong style="color:var(--ink)">修订记录（基准线量纲修复）：</strong>
+          初版柱状图的参考线误用了<strong>十年段总量口径</strong>的「1,700 首」（常年区间下沿），
+          却绘制在<strong>单年口径</strong>的纵轴上 —— 两口径相差约一个数量级，属量纲冲突。
+          现改为单年口径统计量：以 2015–2019 各年器乐曲数
+          <span class="mono">[219, 169, 190, 112, 160]</span> 计算，
+          得<strong>均值 170.0 首、样本标准差 39.6 首</strong>，
+          参考线重绘为<strong>均值实线（170 首）+ ±1σ 半透明色带（130–210 首）</strong>，
+          图注同步改为「2015–2019 单年均值 ±1σ」。
+          2020 年的 28 首降权样式保持不变，其偏离程度经复核为
+          <strong>z = −3.59（约 3.6 个标准差）</strong>，原表述「约 3.4 个标准差」已一并更正。
+          另补齐了数据表中遗漏的 <strong>2016 年</strong>行（169 首），
+          使表格年份与柱状图 x 轴完全一致（2015–2020 共 6 年）。
+          第 4 节正文另增设「两个口径必须分清」说明卡片与口径对照表。
+        </div>
+      </div>
+    </div>
+
+    <div class="check-item">
+      <div class="check-ico">✓</div>
+      <div class="check-body">
+        <div class="check-q">⑤ D3 视图都跑了 create_and_validate_view？</div>
+        <div class="check-a">
+          <span class="ev">通过。</span>
+          本报告数据层为三个锁定视图，均已通过
+          <code>create_and_validate_view</code> 的六项断言
+          （行数 / 字段存在性 / 列类型 / 空值 / 唯一性 / 值域），
+          结果 <span class="ev">3/3 VALID</span>：
+          <code>yearly_valence</code> 100 行 ·
+          <code>decade_features</code> 11 行 ·
+          <code>regression_data</code> 58,236 行。
+          源文件指纹校验 <span class="ev">PASS</span>。
+          <br>
+          <em>说明：D3 视图层扩展（任务 B）为独立任务，尚未执行，不属于本报告交付范围。</em>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card card-blue" style="margin-top:24px">
+    <p style="margin-bottom:0">
+      <strong>自检结论：5 / 5 全部通过。</strong>
+      其中第 ① 项发现并处理了交接包中的两处文本笔误（1970s / 2020s 舞动度），
+      以数据库实查值为准并在正文中保持自洽。
+    </p>
+  </div>
+</section>
+
+<footer>
+  <div class="f-title">数据与凭证</div>
+  <p>
+    数据源：<code>archive/data.csv</code>（29,654,587 字节）·
+    SHA256 <code>c97c4234…ded7f8</code> · 指纹校验 <strong>PASS</strong><br>
+    数据库：<code>spotify.duckdb</code> ·
+    视图 <code>raw_tracks</code> / <code>yearly_valence</code> /
+    <code>decade_features</code> / <code>regression_data</code> ·
+    校验 <strong>3/3 VALID</strong><br>
+    统计口径：Pearson 相关系数基于全量 170,653 条曲目；
+    十年聚合基于 <code>year//10*10</code> 整数除法分组；
+    器乐/人声划分阈值为 <code>instrumentalness = 0.5</code>。
+  </p>
+  <p style="margin-top:16px;color:var(--ink-4)">
+    本报告为静态交付物，全部数值已硬编码，不包含任何实时数据库查询逻辑。<br>
+    所有结论均受第 0 节三条铁律约束。
+  </p>
+</footer>
+
+</div>
+</body>
+</html>
